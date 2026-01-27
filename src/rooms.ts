@@ -4,8 +4,9 @@ import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
 import type { WebSocket } from "ws";
 
+import { config } from "./config.js";
 import { forwardUpdate } from "./forwarding.js";
-import { broadcastDocUpdate } from "./yjsProtocol.js";
+import { broadcastAwarenessUpdate, broadcastDocUpdate } from "./yjsProtocol.js";
 import type { Conn, Room, RoomName } from "./types.js";
 
 /**
@@ -38,7 +39,19 @@ export function getOrCreateRoom(name: RoomName): Room {
       // call Go api
     });
   });
-  
+
+  awareness.on("update",
+    (
+      { added, updated, removed }: { added: number[]; updated: number[]; removed: number[] },
+      origin: unknown,
+    ) => {
+      const changedClients = added.concat(updated, removed);
+      if (changedClients.length === 0) return;
+
+      broadcastAwarenessUpdate(room, changedClients, origin);
+    },
+  );
+
   rooms.set(name, room);
   return room;
 }

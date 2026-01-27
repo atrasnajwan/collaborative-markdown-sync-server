@@ -38,7 +38,10 @@ export function startServer() {
     const conn = createConn(ws, roomName);
     room.conns.add(conn);
 
+    room.awareness.setLocalStateField("connectionId", conn.id);
+
     sendInitSyncStep(ws, room);
+    sendAwareness(ws, room);
 
     ws.on("message", (data, isBinary) => {
       if (!isBinary) return;
