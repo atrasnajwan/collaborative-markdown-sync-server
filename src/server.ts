@@ -32,10 +32,23 @@ export function startServer() {
       ws.close(1008, "Invalid room");
       return;
     }
-    const room = getOrCreateRoom(roomName);
+    // Extract JWT from query string: ws://host:port/room?token=JWT_HERE
+    let authToken: string | undefined;
+    if (req.url) {
+      const url = new URL(req.url, `http://${config.HOST}:${config.PORT}`);
+      const token = url.searchParams.get("token");
+      if (token) {
+        authToken = token;
+      }
+    }
+
+    const room = getOrCreateRoom(roomName, authToken);
     touchRoom(room);
 
     const conn = createConn(ws, roomName);
+    if (authToken) {
+      conn.authToken = authToken;
+    }
     room.conns.add(conn);
 
     room.awareness.setLocalStateField("connectionId", conn.id);

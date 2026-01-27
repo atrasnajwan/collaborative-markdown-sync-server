@@ -15,6 +15,7 @@ export type Conn = {
   room: RoomName;
   awarenessClientId: number;
   closed: boolean;
+  authToken?: string;
 };
 
 export type Room = {
@@ -23,5 +24,6 @@ export type Room = {
   awareness: awarenessProtocol.Awareness;
   conns: Set<Conn>;
   lastActiveAt: number;
+  forwardQueue?: ForwardQueue;
 };
 

@@ -8,6 +8,7 @@ import { config } from "./config.js";
 import { forwardUpdate } from "./forwarding.js";
 import { broadcastAwarenessUpdate, broadcastDocUpdate } from "./yjsProtocol.js";
 import type { Conn, Room, RoomName } from "./types.js";
+import { hydrateRoomFromBackend } from "./persistence.js";
 
 /**
  * In‑memory registry of all active rooms
@@ -17,8 +18,11 @@ export const rooms = new Map<RoomName, Room>();
 /**
  * Get an existing room or create a new Y.Doc + Awareness instance for `name`.
  * Also wires up listeners to broadcast and forward document updates.
+ *
+ * Accepts a JWT auth token which is used to hydrate the room
+ * from the backend when it is first created.
  */
-export function getOrCreateRoom(name: RoomName): Room {
+export function getOrCreateRoom(name: RoomName, authToken?: string): Room {
   const existing = rooms.get(name);
   if (existing) return existing;
 
@@ -35,8 +39,18 @@ export function getOrCreateRoom(name: RoomName): Room {
 
   doc.on("update", (update: Uint8Array, origin: unknown) => {
     broadcastDocUpdate(room, update, origin);
-    void forwardUpdate(room, update).catch(() => {
-      // call Go api
+    // find the originating connection so we can forward using
+    // that client's JWT
+    let authToken: string | undefined;
+    if (origin && typeof origin === "object" && "send" in (origin as any)) {
+      const originWs = origin as WebSocket;
+      const originConn = Array.from(room.conns).find((c) => c.ws === originWs);
+      authToken = originConn?.authToken;
+    }
+
+    // call backend api
+    forwardUpdate(room, update, authToken).catch((err) => {
+      console.log(err)
     });
   });
 
@@ -53,6 +67,9 @@ export function getOrCreateRoom(name: RoomName): Room {
   );
 
   rooms.set(name, room);
+  hydrateRoomFromBackend(room, authToken).catch((err) => {
+    console.log(err)
+  });
   return room;
 }
 
