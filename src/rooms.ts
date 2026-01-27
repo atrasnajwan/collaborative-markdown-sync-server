@@ -76,3 +76,18 @@ export function cleanupConn(room: Room, conn: Conn) {
   touchRoom(room);
 }
 
+/**
+ * Periodically scan for idle rooms(unused for certain time) and destroy their Y.Doc instances.
+ */
+export function setupRoomDestroyer() {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [name, room] of rooms.entries()) {
+      if (room.conns.size > 0) continue;
+      if (now - room.lastActiveAt < config.ROOM_TTL_MS) continue;
+      room.doc.destroy();
+      rooms.delete(name);
+    }
+  }, config.ROOM_TTL_MS);
+}
+

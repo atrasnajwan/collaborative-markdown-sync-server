@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 
 import { normalizeRoomFromUrl, config } from "./config.js";
-import { cleanupConn, createConn, getOrCreateRoom, setupRoomGc, touchRoom } from "./rooms.js";
+import { cleanupConn, createConn, getOrCreateRoom, setupRoomDestroyer, touchRoom } from "./rooms.js";
 import { handleIncoming, sendAwareness, sendInitSyncStep } from "./yjsProtocol.js";
 
 /**
@@ -55,6 +55,8 @@ export function startServer() {
     ws.on("close", () => cleanupConn(room, conn));
     ws.on("error", () => cleanupConn(room, conn));
   });
+
+  setupRoomDestroyer();
 
   httpServer.listen(config.PORT, config.HOST, () => {
     // eslint-disable-next-line no-console
