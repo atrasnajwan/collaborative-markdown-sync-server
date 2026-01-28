@@ -8,6 +8,7 @@ import { config } from "./config.js";
 import { forwardUpdate } from "./forwarding.js";
 import { broadcastAwarenessUpdate, broadcastDocUpdate } from "./yjsProtocol.js";
 import type { Conn, Room, RoomName } from "./types.js";
+import { verifyAuthToken } from "./auth.js";
 import { hydrateRoomFromBackend } from "./persistence.js";
 
 /**
@@ -19,10 +20,8 @@ export const rooms = new Map<RoomName, Room>();
  * Get an existing room or create a new Y.Doc + Awareness instance for `name`.
  * Also wires up listeners to broadcast and forward document updates.
  *
- * Accepts a JWT auth token which is used to hydrate the room
- * from the backend when it is first created.
  */
-export function getOrCreateRoom(name: RoomName, authToken?: string): Room {
+export function getOrCreateRoom(name: RoomName): Room {
   const existing = rooms.get(name);
   if (existing) return existing;
 
@@ -39,18 +38,16 @@ export function getOrCreateRoom(name: RoomName, authToken?: string): Room {
 
   doc.on("update", (update: Uint8Array, origin: unknown) => {
     broadcastDocUpdate(room, update, origin);
-    // find the originating connection so we can forward using
-    // that client's JWT
-    let authToken: string | undefined;
+
+    // Forward using the originating connection's auth (if we can identify it).
+    let originConn: Conn | undefined;
     if (origin && typeof origin === "object" && "send" in (origin as any)) {
       const originWs = origin as WebSocket;
-      const originConn = Array.from(room.conns).find((c) => c.ws === originWs);
-      authToken = originConn?.authToken;
+      originConn = Array.from(room.conns).find((c) => c.ws === originWs);
     }
-
-    // call backend api
-    forwardUpdate(room, update, authToken).catch((err) => {
-      console.log(err)
+    if (!originConn) return;
+    forwardUpdate(room, update, originConn).catch((err) => {
+      console.log(err);
     });
   });
 
@@ -67,9 +64,11 @@ export function getOrCreateRoom(name: RoomName, authToken?: string): Room {
   );
 
   rooms.set(name, room);
-  hydrateRoomFromBackend(room, authToken).catch((err) => {
+  // set initial content
+  hydrateRoomFromBackend(room).catch((err) => {
     console.log(err)
   });
+
   return room;
 }
 
@@ -80,18 +79,22 @@ export function touchRoom(room: Room) {
   room.lastActiveAt = Date.now();
 }
 
-export function createConn(ws: WebSocket, roomName: RoomName): Conn {
+export function createConn(ws: WebSocket, roomName: RoomName, authToken: string): Conn {
   // Yjs awareness identifies each client by a numeric ID, so we generate
   // a random 31‑bit integer for this WebSocket connection and reuse it
   // for the life of the connection.
   const awarenessClientId = (Math.random() * 0x7fffffff) | 0;
-  return {
+  const { userId } = verifyAuthToken(authToken);
+  const conn = {
     id: randomUUID(),
     ws,
     room: roomName,
     awarenessClientId,
     closed: false,
+    userId,
   };
+
+  return conn;
 }
 
 /**

@@ -67,13 +67,15 @@ export function startServer() {
       }
     }
 
-    const room = getOrCreateRoom(roomName, authToken);
+    if (!authToken) {
+      ws.close(1008, "Unauthorized");
+      return;
+    }
+
+    const room = getOrCreateRoom(roomName);
     touchRoom(room);
 
-    const conn = createConn(ws, roomName);
-    if (authToken) {
-      conn.authToken = authToken;
-    }
+    const conn = createConn(ws, roomName, authToken);
     room.conns.add(conn);
 
     room.awareness.setLocalStateField("connectionId", conn.id);

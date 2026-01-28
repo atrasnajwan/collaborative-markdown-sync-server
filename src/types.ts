@@ -15,7 +15,7 @@ export type Conn = {
   room: RoomName;
   awarenessClientId: number;
   closed: boolean;
-  authToken?: string;
+  userId: string;
 };
 
 export type Room = {
