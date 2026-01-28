@@ -12,12 +12,14 @@
   },
   "dependencies": {
     "dotenv": "^17.2.3",
+    "jsonwebtoken": "^9.0.3",
     "lib0": "^0.2.114",
     "ws": "^8.18.0",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.27"
   },
   "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.0.0",
     "@types/ws": "^8.18.1",
     "tsx": "^4.19.2",

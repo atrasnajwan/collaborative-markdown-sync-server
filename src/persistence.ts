@@ -20,20 +20,16 @@ function decodeBase64ToUint8Array(b64: string): Uint8Array {
 
 /**
  * Fetch initial document state for a room from the API server
- * and apply it to the room's Y.Doc. Requires a JWT for auth.
+ * and apply it to the room's Y.Doc. Requires a BACKEND_API_SECRET for auth.
  */
-export async function hydrateRoomFromBackend(room: Room, authToken?: string) {
-  if (!authToken) return;
-  // documents/:id/state
-  const url = `${config.BACKEND_API_URL}/documents/${room.name.replace("doc-", "")}/last-state`;
+export async function hydrateRoomFromBackend(room: Room) {
+  // /internal/documents/:id/state
+  const url = `${config.BACKEND_API_URL}/internal/documents/${room.name.replace("doc-", "")}/last-state`;
   const headers: Record<string, string> = {
     "content-type": "application/json",
+    "authorization": `Bearer ${config.BACKEND_API_SECRET}`,
   };
-  // Prefer per-connection JWT from the client
-  if (authToken) {
-    headers["authorization"] = `Bearer ${authToken}`;
-  }
-  
+
   const res = await fetch(url, { headers });
   if (!res.ok) return;
 
