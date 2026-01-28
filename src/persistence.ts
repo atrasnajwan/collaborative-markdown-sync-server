@@ -25,7 +25,7 @@ function decodeBase64ToUint8Array(b64: string): Uint8Array {
 export async function hydrateRoomFromBackend(room: Room, authToken?: string) {
   if (!authToken) return;
   // documents/:id/state
-  const url = `${config.BACKEND_API_URL}/documents/${room.name.replace("doc-", "")}/state`;
+  const url = `${config.BACKEND_API_URL}/documents/${room.name.replace("doc-", "")}/last-state`;
   const headers: Record<string, string> = {
     "content-type": "application/json",
   };
@@ -38,7 +38,6 @@ export async function hydrateRoomFromBackend(room: Room, authToken?: string) {
   if (!res.ok) return;
 
   const body = (await res.json()) as DocumentStateResponse;
-//   console.log("res ", body)
   // Apply snapshot first (if present)
   if (body.snapshot && body.snapshot.length > 0) {
     const snapshotUpdate = decodeBase64ToUint8Array(body.snapshot);

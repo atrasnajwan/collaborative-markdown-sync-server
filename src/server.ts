@@ -1,15 +1,17 @@
 import { createServer } from "node:http";
 
 import { WebSocketServer } from "ws";
+import * as Y from "yjs";
 
 import { normalizeRoomFromUrl, config } from "./config.js";
-import { cleanupConn, createConn, getOrCreateRoom, setupRoomDestroyer, touchRoom } from "./rooms.js";
+import { cleanupConn, createConn, getOrCreateRoom, rooms, setupRoomDestroyer, touchRoom } from "./rooms.js";
 import { handleIncoming, sendAwareness, sendInitSyncStep } from "./yjsProtocol.js";
 
 /**
  * Boot the HTTP + WebSocket server.
  *
  * - Exposes a `/healthz` HTTP endpoint.
+ * - Exposes a `/internal/documents/:id/state` endpoint to get current doc state.
  * - Accepts WebSocket connections on `ws://HOST:PORT/<room>`.
  */
 export function startServer() {
@@ -19,6 +21,29 @@ export function startServer() {
       res.end(JSON.stringify({ ok: true }));
       return;
     }
+
+    // Internal endpoint: GET /internal/documents/:id/state
+    const stateMatch = req.url?.match(/^\/internal\/documents\/([^\/]+)\/state$/);
+    if (stateMatch && req.method === "GET") {
+      const docId = stateMatch[1];
+      const roomName = `doc-${docId}`;
+      const room = rooms.get(roomName);
+
+      if (!room) {
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "Document not found" }));
+        return;
+      }
+
+      // Encode current Y.Doc state as update
+      const stateUpdate = Y.encodeStateAsUpdate(room.doc);
+      const binary = Buffer.from(stateUpdate).toString("base64");
+      console.log("send current doc state")
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ binary }));
+      return;
+    }
+
     res.writeHead(404);
     res.end();
   });
