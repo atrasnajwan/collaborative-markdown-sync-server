@@ -1,6 +1,7 @@
 import * as Y from "yjs";
 import { config } from "./config.js";
 import type { Conn, Room } from "./types.js";
+import { postDocumentUpdate } from "./internalApi.js";
 
 /**
  * Forward each Yjs document update to the backend API.
@@ -8,8 +9,6 @@ import type { Conn, Room } from "./types.js";
  * as a single batched update per room.
  */
 export async function forwardUpdate(room: Room, update: Uint8Array, conn: Conn) {
-  if (!config.BACKEND_API_URL) return;
-
   if (config.FORWARD_DEBOUNCE_MS > 0) {
     if (!room.forwardQueue) room.forwardQueue = { updates: [] };
     room.forwardQueue.updates.push(update);
@@ -19,7 +18,7 @@ export async function forwardUpdate(room: Room, update: Uint8Array, conn: Conn) 
         room.forwardQueue = undefined;
         if (!q) return;
         const combined = Y.mergeUpdates(q.updates);
-        void forwardUpdateNow(room, combined, conn);
+        forwardUpdateNow(room, combined, conn);
       }, config.FORWARD_DEBOUNCE_MS);
     }
     return;
@@ -27,16 +26,8 @@ export async function forwardUpdate(room: Room, update: Uint8Array, conn: Conn) 
   await forwardUpdateNow(room, update, conn);
 }
 
-async function forwardUpdateNow(room: Room, update: Uint8Array, conn: Conn) {
-  const url = `${config.BACKEND_API_URL}/internal/documents/${room.name.replace("doc-", "")}/update`;
-  const body = Buffer.from(update);
-
-  const headers: Record<string, string> = {
-    "content-type": "application/octet-stream",
-    "authorization": `Bearer ${config.BACKEND_API_SECRET}`,
-    "x-user-id": conn.userId,
-  };
-
-  await fetch(url, { method: "POST", headers, body }).catch(error => console.log(error));
+async function forwardUpdateNow(room: Room, update: Uint8Array, conn: Conn): Promise<void> {
+  const docId = room.name.replace("doc-", "");
+  await postDocumentUpdate(docId, update, conn.userId);
 }
 
