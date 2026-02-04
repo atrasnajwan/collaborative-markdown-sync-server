@@ -12,6 +12,18 @@ export type DocumentState = {
   updates: DocumentUpdateDTO[];
 };
 
+export enum UserRole {
+  Owner = "owner",
+  Editor = "editor",
+  Viewer = "viewer",
+  None = "none"
+}
+
+type UserRoleResponse = {
+  role: UserRole;
+}
+
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     authorization: `Bearer ${config.BACKEND_API_SECRET}`,
@@ -30,7 +42,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     throw new Error(error?.message || 'An error occurred');
   }
 
-  return response.json() as T
+  return await response.json() as T
 }
 
 
@@ -64,3 +76,10 @@ export async function postDocumentUpdate(
   });
 }
 
+export async function fetchUserRole(docId: string, userId: string): Promise<UserRoleResponse> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json"
+  };
+  
+  return request<UserRoleResponse>(`/internal/documents/${docId}/permission?user_id=${userId}`, { headers });
+}

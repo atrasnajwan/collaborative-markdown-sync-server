@@ -1,6 +1,8 @@
 import type { WebSocket } from "ws";
 import type * as Y from "yjs";
 import type * as awarenessProtocol from "y-protocols/awareness";
+import { UserRole } from "./internalApi.js";
+import EventEmitter from "node:events";
 
 export type RoomName = string;
 
@@ -16,6 +18,8 @@ export type Conn = {
   awarenessClientId: number;
   closed: boolean;
   userId: string;
+  userRole: UserRole,
+  synced: boolean
 };
 
 export type Room = {
@@ -25,5 +29,7 @@ export type Room = {
   conns: Set<Conn>;
   lastActiveAt: number;
   forwardQueue?: ForwardQueue;
+  ready: boolean,
+  emitter: EventEmitter;
 };
 

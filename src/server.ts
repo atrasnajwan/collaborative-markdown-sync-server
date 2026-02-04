@@ -50,7 +50,7 @@ export function startServer() {
 
   const wss = new WebSocketServer({ server: httpServer });
 
-  wss.on("connection", (ws, req) => {
+  wss.on("connection", async (ws, req) => {
     const roomName = normalizeRoomFromUrl(req.url);
 
     if (!roomName) {
@@ -74,14 +74,12 @@ export function startServer() {
 
     const room = getOrCreateRoom(roomName);
     touchRoom(room);
-
-    const conn = createConn(ws, roomName, authToken);
+    
+    const conn = await createConn(ws, roomName, authToken);
     room.conns.add(conn);
 
     room.awareness.setLocalStateField("connectionId", conn.id);
 
-    sendInitSyncStep(ws, room);
-    sendAwareness(ws, room);
 
     ws.on("message", (data, isBinary) => {
       if (!isBinary) return;
@@ -94,6 +92,22 @@ export function startServer() {
       touchRoom(room);
       handleIncoming(room, conn, messageData);
     });
+
+    // Handle the Sync Handshake
+    const startSync = () => {
+      sendInitSyncStep(ws, room);
+      sendAwareness(ws, room);
+      conn.synced = true;
+    };
+
+    if (room.ready) {
+      console.log("start sync")
+      startSync();
+    } else {
+      console.log("wait for hydration")
+      // Wait for the hydration to finish
+      room.emitter.once('ready', startSync);
+    }
 
     ws.on("close", () => cleanupConn(room, conn));
     ws.on("error", () => cleanupConn(room, conn));

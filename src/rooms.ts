@@ -10,6 +10,8 @@ import { broadcastAwarenessUpdate, broadcastDocUpdate } from "./yjsProtocol.js";
 import type { Conn, Room, RoomName } from "./types.js";
 import { verifyAuthToken } from "./auth.js";
 import { hydrateRoomFromBackend } from "./persistence.js";
+import { fetchUserRole, UserRole } from "./internalApi.js";
+import EventEmitter from "node:events";
 
 /**
  * In‑memory registry of all active rooms
@@ -34,24 +36,48 @@ export function getOrCreateRoom(name: RoomName): Room {
     awareness,
     conns: new Set(),
     lastActiveAt: Date.now(),
+    ready: false,
+    emitter: new EventEmitter()
   };
 
-  doc.on("update", (update: Uint8Array, origin: unknown) => {
-    broadcastDocUpdate(room, update, origin);
+  rooms.set(name, room);
+  
+  // set initial content
+  hydrateRoomFromBackend(room).then(() => {
+    room.ready = true
+  
+    setupDocListeners(room)
+    setupAwarenessListeners(room)
+    // Tell everyone waiting: "The data is ready!"
+    room.emitter.emit('ready');
+  })
+  
+  return room;
+}
 
-    // Forward using the originating connection's auth (if we can identify it).
+function setupDocListeners(room: Room) {
+  room.doc.on("update", (update: Uint8Array, origin: unknown) => {
+    // get origin connection
     let originConn: Conn | undefined;
     if (origin && typeof origin === "object" && "send" in (origin as any)) {
       const originWs = origin as WebSocket;
       originConn = Array.from(room.conns).find((c) => c.ws === originWs);
     }
+
+    // only owner and editor can edit document
+    if (!originConn || (originConn.userRole !== UserRole.Owner && originConn.userRole !== UserRole.Editor)) return;
+    broadcastDocUpdate(room, update, origin);
+
+    // skip forward update if it's not from origin
     if (!originConn) return;
     forwardUpdate(room, update, originConn).catch((err) => {
       console.log(err);
     });
   });
+}
 
-  awareness.on("update",
+function setupAwarenessListeners(room: Room) {
+  room.awareness.on("update",
     (
       { added, updated, removed }: { added: number[]; updated: number[]; removed: number[] },
       origin: unknown,
@@ -62,14 +88,6 @@ export function getOrCreateRoom(name: RoomName): Room {
       broadcastAwarenessUpdate(room, changedClients, origin);
     },
   );
-
-  rooms.set(name, room);
-  // set initial content
-  hydrateRoomFromBackend(room).catch((err) => {
-    console.log(err)
-  });
-
-  return room;
 }
 
 /**
@@ -79,12 +97,14 @@ export function touchRoom(room: Room) {
   room.lastActiveAt = Date.now();
 }
 
-export function createConn(ws: WebSocket, roomName: RoomName, authToken: string): Conn {
+export async function createConn(ws: WebSocket, roomName: RoomName, authToken: string): Promise<Conn> {
   // Yjs awareness identifies each client by a numeric ID, so we generate
   // a random 31‑bit integer for this WebSocket connection and reuse it
   // for the life of the connection.
   const awarenessClientId = (Math.random() * 0x7fffffff) | 0;
   const { userId } = verifyAuthToken(authToken);
+  const docId = roomName.replace("doc-", "");
+  const userRole = (await fetchUserRole(docId, userId)).role
   const conn = {
     id: randomUUID(),
     ws,
@@ -92,8 +112,9 @@ export function createConn(ws: WebSocket, roomName: RoomName, authToken: string)
     awarenessClientId,
     closed: false,
     userId,
+    userRole,
+    synced: false
   };
-
   return conn;
 }
 
