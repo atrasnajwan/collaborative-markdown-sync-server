@@ -42,6 +42,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     throw new Error(error?.message || 'An error occurred');
   }
 
+  // Handle 204 No Content
+  if (response.status === 204) {
+    return {} as T
+  }
+  
   return await response.json() as T
 }
 
@@ -70,6 +75,20 @@ export async function postDocumentUpdate(
   }
 
   return request<void>(`/internal/documents/${docId}/update`, {
+    method: 'POST',
+    headers,
+    body,
+  });
+}
+
+export async function postDocumentSnapshot(docId: string, state: Uint8Array): Promise<void> {
+  const body = Buffer.from(state);
+
+  const headers: Record<string, string> = {
+    "content-type": "application/octet-stream",
+  };
+  
+  return request<void>(`/internal/documents/${docId}/snapshot`, {
     method: 'POST',
     headers,
     body,

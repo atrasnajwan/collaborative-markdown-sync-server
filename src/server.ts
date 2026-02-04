@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, Server } from "node:http";
 
 import { WebSocketServer } from "ws";
 import * as Y from "yjs";
@@ -6,6 +6,7 @@ import * as Y from "yjs";
 import { normalizeRoomFromUrl, config } from "./config.js";
 import { cleanupConn, createConn, getOrCreateRoom, rooms, setupRoomDestroyer, touchRoom } from "./rooms.js";
 import { handleIncoming, sendAwareness, sendInitSyncStep } from "./yjsProtocol.js";
+import { postDocumentSnapshot } from "./internalApi.js";
 
 /**
  * Boot the HTTP + WebSocket server.
@@ -14,7 +15,7 @@ import { handleIncoming, sendAwareness, sendInitSyncStep } from "./yjsProtocol.j
  * - Exposes a `/internal/documents/:id/state` endpoint to get current doc state.
  * - Accepts WebSocket connections on `ws://HOST:PORT/<room>`.
  */
-export function startServer() {
+export function startServer(): Server {
   const httpServer = createServer((req, res) => {
     if (req.url === "/healthz") {
       res.writeHead(200, { "content-type": "application/json" });
@@ -95,6 +96,7 @@ export function startServer() {
 
     // Handle the Sync Handshake
     const startSync = () => {
+      console.log("sync running")
       sendInitSyncStep(ws, room);
       sendAwareness(ws, room);
       conn.synced = true;
@@ -119,5 +121,23 @@ export function startServer() {
     // eslint-disable-next-line no-console
     console.log(`listening on http://${config.HOST}:${config.PORT}`);
   });
+  
+  return httpServer
+}
+
+export async function persistAllRooms() {
+  const promises = Array.from(rooms.values()).map(async (room) => {
+    try {
+      console.log(`[Shutdown] Saving room: ${room.name}`);
+      const docId = room.name.replace("doc-", "");
+      const stateUpdate = Y.encodeStateAsUpdate(room.doc);
+      const binary = Buffer.from(stateUpdate);
+
+      return postDocumentSnapshot(docId, binary)
+    } catch (e) {
+      console.error(`[Shutdown] Failed to save ${room.name}`, e);
+    }
+  });
+  await Promise.all(promises);
 }
 
