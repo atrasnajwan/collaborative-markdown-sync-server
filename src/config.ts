@@ -6,6 +6,7 @@ export type Config = {
   HOST: string;
   BACKEND_API_URL: string;
   BACKEND_API_SECRET: string;
+  INTERNAL_SECRET: string;
   FORWARD_DEBOUNCE_MS: number;
   JWT_SECRET: string;
   ROOM_TTL_MS: number;
@@ -16,6 +17,7 @@ export const config: Config = {
   HOST: process.env.HOST ?? "0.0.0.0",
   BACKEND_API_URL: process.env.BACKEND_API_URL ?? "",
   BACKEND_API_SECRET: process.env.BACKEND_API_SECRET ?? "collab-internal-secret",
+  INTERNAL_SECRET: process.env.INTERNAL_SECRET ?? "collab-sync-secret",
   JWT_SECRET: process.env.JWT_SECRET ?? "",
   FORWARD_DEBOUNCE_MS: intFromEnv("FORWARD_DEBOUNCE_MS", 0),
   ROOM_TTL_MS: intFromEnv("ROOM_TTL_MS", 10 * 60 * 1000), // 10 minutes default

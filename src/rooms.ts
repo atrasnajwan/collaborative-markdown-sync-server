@@ -7,10 +7,10 @@ import type { WebSocket } from "ws";
 import { config } from "./config.js";
 import { forwardUpdate } from "./forwarding.js";
 import { broadcastAwarenessUpdate, broadcastDocUpdate } from "./yjsProtocol.js";
-import type { Conn, Room, RoomName } from "./types.js";
+import { UserRole, type Conn, type Room, type RoomName } from "./types.js";
 import { verifyAuthToken } from "./auth.js";
 import { hydrateRoomFromBackend } from "./persistence.js";
-import { fetchUserRole, UserRole } from "./internalApi.js";
+import { fetchUserRole } from "./internalApi.js";
 import EventEmitter from "node:events";
 
 /**
@@ -139,9 +139,12 @@ export function setupRoomDestroyer() {
     for (const [name, room] of rooms.entries()) {
       if (room.conns.size > 0) continue;
       if (now - room.lastActiveAt < config.ROOM_TTL_MS) continue;
-      room.doc.destroy();
-      rooms.delete(name);
+      removeRoom(room, name) 
     }
   }, config.ROOM_TTL_MS);
 }
 
+export function removeRoom(room: Room, name: string) {
+  room.doc.destroy();
+  rooms.delete(name);
+}

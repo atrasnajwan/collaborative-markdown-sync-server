@@ -1,7 +1,6 @@
 import type { WebSocket } from "ws";
 import type * as Y from "yjs";
 import type * as awarenessProtocol from "y-protocols/awareness";
-import { UserRole } from "./internalApi.js";
 import EventEmitter from "node:events";
 
 export type RoomName = string;
@@ -33,3 +32,9 @@ export type Room = {
   emitter: EventEmitter;
 };
 
+export enum UserRole {
+  Owner = "owner",
+  Editor = "editor",
+  Viewer = "viewer",
+  None = "none"
+}

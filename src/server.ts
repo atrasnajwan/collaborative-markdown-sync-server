@@ -7,42 +7,28 @@ import { normalizeRoomFromUrl, config } from "./config.js";
 import { cleanupConn, createConn, getOrCreateRoom, rooms, setupRoomDestroyer, touchRoom } from "./rooms.js";
 import { handleIncoming, sendAwareness, sendInitSyncStep } from "./yjsProtocol.js";
 import { postDocumentSnapshot } from "./internalApi.js";
+import { handleInternalAPI } from "./apiHandlers.js";
 
 /**
  * Boot the HTTP + WebSocket server.
  *
  * - Exposes a `/healthz` HTTP endpoint.
- * - Exposes a `/internal/documents/:id/state` endpoint to get current doc state.
+ * - Exposes a `/internal/` endpoint
  * - Accepts WebSocket connections on `ws://HOST:PORT/<room>`.
  */
 export function startServer(): Server {
   const httpServer = createServer((req, res) => {
-    if (req.url === "/healthz") {
+    const { url } = req;
+
+    // Health check
+    if (url === "/healthz") {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
-      return;
+      return res.end(JSON.stringify({ ok: true }));
     }
 
-    // Internal endpoint: GET /internal/documents/:id/state
-    const stateMatch = req.url?.match(/^\/internal\/documents\/([^\/]+)\/state$/);
-    if (stateMatch && req.method === "GET") {
-      const docId = stateMatch[1];
-      const roomName = `doc-${docId}`;
-      const room = rooms.get(roomName);
-
-      if (!room) {
-        res.writeHead(404, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: "Document not found" }));
-        return;
-      }
-
-      // Encode current Y.Doc state as update
-      const stateUpdate = Y.encodeStateAsUpdate(room.doc);
-      const binary = Buffer.from(stateUpdate).toString("base64");
-      console.log("send current doc state")
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ binary }));
-      return;
+    // Route Internal API Requests /internal
+    if (url?.startsWith("/internal/")) {
+      return handleInternalAPI(req, res, rooms);
     }
 
     res.writeHead(404);

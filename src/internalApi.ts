@@ -1,4 +1,5 @@
 import { config } from "./config.js";
+import { UserRole } from "./types.js";
 
 export type DocumentUpdateDTO = {
   seq: number;
@@ -12,17 +13,9 @@ export type DocumentState = {
   updates: DocumentUpdateDTO[];
 };
 
-export enum UserRole {
-  Owner = "owner",
-  Editor = "editor",
-  Viewer = "viewer",
-  None = "none"
-}
-
 type UserRoleResponse = {
   role: UserRole;
 }
-
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
