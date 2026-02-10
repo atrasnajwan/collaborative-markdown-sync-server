@@ -1,40 +1,40 @@
-import type { WebSocket } from "ws";
-import type * as Y from "yjs";
-import type * as awarenessProtocol from "y-protocols/awareness";
-import EventEmitter from "node:events";
+import type { WebSocket } from "ws"
+import type * as Y from "yjs"
+import type * as awarenessProtocol from "y-protocols/awareness"
+import EventEmitter from "node:events"
 
-export type RoomName = string;
+export type RoomName = string
 
 export type ForwardQueue = {
-  timer?: NodeJS.Timeout;
-  updates: Uint8Array[];
-};
+  timer?: NodeJS.Timeout
+  updates: Uint8Array[]
+}
 
 export type Conn = {
-  id: string;
-  ws: WebSocket;
-  room: RoomName;
-  awarenessClientId: number;
-  closed: boolean;
-  userId: string;
-  userRole: UserRole,
+  id: string
+  ws: WebSocket
+  room: RoomName
+  awarenessClientId: number
+  closed: boolean
+  userId: string
+  userRole: UserRole
   synced: boolean
-};
+}
 
 export type Room = {
-  name: RoomName;
-  doc: Y.Doc;
-  awareness: awarenessProtocol.Awareness;
-  conns: Set<Conn>;
-  lastActiveAt: number;
-  forwardQueue?: ForwardQueue;
-  ready: boolean,
-  emitter: EventEmitter;
-};
+  name: RoomName
+  doc: Y.Doc
+  awareness: awarenessProtocol.Awareness
+  conns: Set<Conn>
+  lastActiveAt: number
+  forwardQueue?: ForwardQueue
+  ready: boolean
+  emitter: EventEmitter
+}
 
 export enum UserRole {
   Owner = "owner",
   Editor = "editor",
   Viewer = "viewer",
-  None = "none"
+  None = "none",
 }

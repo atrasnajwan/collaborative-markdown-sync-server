@@ -3,11 +3,13 @@
 WebSocket Yjs sync + awareness server that keeps a Y.Doc in memory per room and (optionally) forwards updates to a backend.
 
 ## Quick links:
+
 - Server bootstrap: [`startServer`](src/server.ts) — [src/index.ts](src/index.ts)
 - Configuration: [`config`](src/config.ts)
 - Internal API: [`handleInternalAPI`](src/apiHandlers.ts) — [src/internalApi.ts](src/internalApi.ts)
 
 ## What it does
+
 - Accept WebSocket connections from clients
 - Speak Yjs sync + awareness protocols
 - Keep Y.Doc in memory per room
@@ -15,17 +17,20 @@ WebSocket Yjs sync + awareness server that keeps a Y.Doc in memory per room and 
 - Optionally forward updates to a backend via HTTP
 
 ## Rooms / URLs
+
 - `ws://localhost:8787/my-room` → room `"my-room"`
 - `ws://localhost:8787/` → room `"default"`
 - Supply auth via query: `ws://host:port/room?token=JWT_HERE`
 
 ## Run (development)
+
 ```sh
 npm install
 npm run dev
 ```
 
 ## Build / Start (production)
+
 ```sh
 npm run build
 npm start
@@ -59,5 +64,6 @@ npm start
 <br>
 
 > Notes
+>
 > - Rooms are hydrated from backend on first access; sync starts after hydration completes.
 > - Permissions are fetched per-connection from the backend (see [src/rooms.ts](src/rooms.ts)).

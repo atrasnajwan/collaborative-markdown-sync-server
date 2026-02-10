@@ -1,26 +1,26 @@
-import { config } from "./config.js";
-import { UserRole } from "./types.js";
+import { config } from "./config.js"
+import { UserRole } from "./types.js"
 
 export type DocumentUpdateDTO = {
-  seq: number;
-  binary: string; // JSON []byte becomes base64 string
-};
+  seq: number
+  binary: string // JSON []byte becomes base64 string
+}
 
 export type DocumentState = {
-  title: string;
-  snapshot: string; // base64
-  snapshot_seq: number;
-  updates: DocumentUpdateDTO[];
-};
+  title: string
+  snapshot: string // base64
+  snapshot_seq: number
+  updates: DocumentUpdateDTO[]
+}
 
 type UserRoleResponse = {
-  role: UserRole;
+  role: UserRole
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     authorization: `Bearer ${config.BACKEND_API_SECRET}`,
-  };
+  }
 
   const response = await fetch(`${config.BACKEND_API_URL}${endpoint}`, {
     ...options,
@@ -28,28 +28,27 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       ...headers,
       ...options.headers,
     },
-  });
+  })
 
   if (!response.ok) {
-    const error = await response.json() as { message?: string };
-    throw new Error(error?.message || 'An error occurred');
+    const error = (await response.json()) as { message?: string }
+    throw new Error(error?.message || "An error occurred")
   }
 
   // Handle 204 No Content
   if (response.status === 204) {
     return {} as T
   }
-  
-  return await response.json() as T
-}
 
+  return (await response.json()) as T
+}
 
 export async function fetchLastDocumentState(docId: string): Promise<DocumentState> {
   const headers: Record<string, string> = {
-    "content-type": "application/json"
-  };
+    "content-type": "application/json",
+  }
 
-  return request<DocumentState>(`/internal/documents/${docId}/last-state`, { headers });
+  return request<DocumentState>(`/internal/documents/${docId}/last-state`, { headers })
 }
 
 export async function postDocumentUpdate(
@@ -57,41 +56,43 @@ export async function postDocumentUpdate(
   update: Uint8Array,
   userId?: string,
 ): Promise<void> {
-  const body = Buffer.from(update);
+  const body = Buffer.from(update)
 
   const headers: Record<string, string> = {
     "content-type": "application/octet-stream",
-  };
-  
+  }
+
   if (userId) {
-    headers["x-user-id"] = userId;
+    headers["x-user-id"] = userId
   }
 
   return request<void>(`/internal/documents/${docId}/update`, {
-    method: 'POST',
+    method: "POST",
     headers,
     body,
-  });
+  })
 }
 
 export async function postDocumentSnapshot(docId: string, state: Uint8Array): Promise<void> {
-  const body = Buffer.from(state);
+  const body = Buffer.from(state)
 
   const headers: Record<string, string> = {
     "content-type": "application/octet-stream",
-  };
-  
+  }
+
   return request<void>(`/internal/documents/${docId}/snapshot`, {
-    method: 'POST',
+    method: "POST",
     headers,
     body,
-  });
+  })
 }
 
 export async function fetchUserRole(docId: string, userId: string): Promise<UserRoleResponse> {
   const headers: Record<string, string> = {
-    "content-type": "application/json"
-  };
-  
-  return request<UserRoleResponse>(`/internal/documents/${docId}/permission?user_id=${userId}`, { headers });
+    "content-type": "application/json",
+  }
+
+  return request<UserRoleResponse>(`/internal/documents/${docId}/permission?user_id=${userId}`, {
+    headers,
+  })
 }

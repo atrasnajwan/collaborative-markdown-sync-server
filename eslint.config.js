@@ -1,63 +1,35 @@
-import js from '@eslint/js';
-import tsPlugin from '@typescript-eslint/eslint-plugin';
-import tsParser from '@typescript-eslint/parser';
+import js from "@eslint/js";
+import tseslint from "typescript-eslint";
+import nodePlugin from "eslint-plugin-n";
 
-export default [
+export default tseslint.config(
+  // Global ignores (replaces .eslintignore)
+  { ignores: ["dist/", "node_modules/", "coverage/"] },
+  
+  // Base JS & Node configs
+  js.configs.recommended,
+  nodePlugin.configs["flat/recommended-script"],
+  
+  // TypeScript configs
+  ...tseslint.configs.recommended,
+  
   {
-    ignores: ['node_modules', 'dist'],
-  },
-  {
-    files: ['src/**/*.ts'],
     languageOptions: {
-      parser: tsParser,
-      parserOptions: {
-        ecmaVersion: 2022,
-        sourceType: 'module',
-        project: './tsconfig.json',
-      },
       globals: {
-        console: 'readonly',
-        process: 'readonly',
-        Buffer: 'readonly',
-        global: 'readonly',
-        __dirname: 'readonly',
-        __filename: 'readonly',
-        URL: 'readonly',
-        URLSearchParams: 'readonly',
-        fetch: 'readonly',
-        RequestInit: 'readonly',
-        setTimeout: 'readonly',
-        clearTimeout: 'readonly',
-        setInterval: 'readonly',
-        clearInterval: 'readonly',
-        setImmediate: 'readonly',
-        clearImmediate: 'readonly',
-        NodeJS: 'readonly',
+        // Defines Node.js global variables
+        process: "readonly",
+        __dirname: "readonly",
       },
-    },
-    plugins: {
-      '@typescript-eslint': tsPlugin,
+      parserOptions: {
+        project: "./tsconfig.json",
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
     rules: {
-      ...js.configs.recommended.rules,
-      ...tsPlugin.configs.recommended.rules,
-      'no-unused-vars': 'off',
-      '@typescript-eslint/no-unused-vars': [
-        'error',
-        {
-          argsIgnorePattern: '^_',
-        },
-      ],
-      '@typescript-eslint/no-explicit-any': 'warn',
-      'quotes': [
-        'error',
-        'single',
-        {
-          avoidEscape: true,
-        },
-      ],
-      'semi': ['error', 'always'],
-      'comma-dangle': ['error', 'always-multiline'],
+      // Custom tweaks
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "n/no-missing-import": "off", // Often handled better by TS itself
+      "no-console": "warn",
     },
   },
-];
+);
