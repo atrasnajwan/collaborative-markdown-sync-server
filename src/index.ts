@@ -34,7 +34,7 @@ async function gracefulShutdown(signal: string) {
   })
 
   try {
-    // 3. Persist data to the Go Backend
+    // Persist data to the Backend
     if (rooms.size > 0) {
       console.log(`[Shutdown] Persisting ${rooms.size} active rooms...`)
       await persistAllRooms()

@@ -121,10 +121,14 @@ export function handleIncoming(room: Room, conn: Conn, data: Uint8Array) {
     case messageSync: {
       const encoder = encoding.createEncoder()
       encoding.writeVarUint(encoder, messageSync)
+      const beforeLength = encoding.length(encoder)
       syncProtocol.readSyncMessage(decoder, encoder, room.doc, conn.ws)
-      const reply = encoding.toUint8Array(encoder)
-      // only send reply if it's not an empty message
-      if (reply.length > 1) sendMessage(conn.ws, reply)
+      const afterLength = encoding.length(encoder)
+
+      // Only send if something was appended
+      if (afterLength > beforeLength) {
+        sendMessage(conn.ws, encoding.toUint8Array(encoder))
+      }
       break
     }
     case messageAwareness: {
