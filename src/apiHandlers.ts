@@ -66,12 +66,17 @@ export async function handleInternalAPI(
         if (conn.userId === String(user_id)) {
           conn.userRole = role
           updated = true
-          conn.ws.send(
-            JSON.stringify({
-              type: role === UserRole.None ? "kicked" : "permission-changed",
-              role,
-            }),
-          )
+          if (role === UserRole.None) {
+            conn.ws.send(JSON.stringify({type: "kicked"}))
+            conn.ws.close(1008, "Unauthorized")
+          } else {
+            conn.ws.send(
+              JSON.stringify({
+                type: "permission-changed",
+                role,
+              }),
+            )
+          }
         }
       })
       return sendJSON(res, 200, { ok: true, updated })

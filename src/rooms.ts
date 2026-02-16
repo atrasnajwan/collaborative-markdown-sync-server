@@ -111,9 +111,17 @@ export async function createConn(
   // a random 31‑bit integer for this WebSocket connection and reuse it
   // for the life of the connection.
   const awarenessClientId = (Math.random() * 0x7fffffff) | 0
-  const { userId } = verifyAuthToken(authToken)
-  const docId = roomName.replace("doc-", "")
-  const userRole = (await fetchUserRole(docId, userId)).role
+  let userId: string = ''
+  let userRole: UserRole = UserRole.None
+
+  try {
+    const docId = roomName.replace("doc-", "")
+    userId = verifyAuthToken(authToken).userId
+    userRole = (await fetchUserRole(docId, userId)).role
+  } catch {
+    ws.send(JSON.stringify({type: 'auth-error'}))
+  }
+  
   const conn = {
     id: randomUUID(),
     ws,

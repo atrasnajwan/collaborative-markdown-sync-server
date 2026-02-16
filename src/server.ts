@@ -15,6 +15,7 @@ import {
 import { handleIncoming, sendAwareness, sendInitSyncStep } from "./yjsProtocol.js"
 import { postDocumentSnapshot } from "./internalApi.js"
 import { handleInternalAPI } from "./apiHandlers.js"
+import { UserRole } from "./types.js"
 
 /**
  * Boot the HTTP + WebSocket server.
@@ -68,8 +69,17 @@ export function startServer(): Server {
 
     const room = getOrCreateRoom(roomName)
     touchRoom(room)
-
+    
     const conn = await createConn(ws, roomName, authToken)
+    if (conn.userId === '') {
+      ws.close(1008, "Unauthorized")
+      return
+    }
+     if (conn.userRole === UserRole.None) {
+      ws.send(JSON.stringify({type: "no-access"}))
+      ws.close(1008, "Unauthorized")
+      return
+    }
     room.conns.add(conn)
 
     room.awareness.setLocalStateField("connectionId", conn.id)
