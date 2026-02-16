@@ -1,5 +1,5 @@
+import { logger } from './logger.js'
 import { createServer, Server } from "node:http"
-
 import { WebSocketServer } from "ws"
 import * as Y from "yjs"
 
@@ -36,9 +36,11 @@ export function startServer(): Server {
 
     // Route Internal API Requests /internal
     if (url?.startsWith("/internal/")) {
+      logger.debug({ url }, 'Processing internal API request')
       return handleInternalAPI(req, res, rooms)
     }
 
+    logger.warn({ url }, 'HTTP request to unknown endpoint')
     res.writeHead(404)
     res.end()
   })
@@ -46,9 +48,11 @@ export function startServer(): Server {
   const wss = new WebSocketServer({ server: httpServer })
 
   wss.on("connection", async (ws, req) => {
+    logger.info({ ip: req.socket.remoteAddress }, 'Client connected')
     const roomName = normalizeRoomFromUrl(req.url)
 
     if (!roomName) {
+      logger.warn({ url: req.url }, 'Invalid room name')
       ws.close(1008, "Invalid room")
       return
     }
@@ -63,6 +67,7 @@ export function startServer(): Server {
     }
 
     if (!authToken) {
+      logger.warn({ roomName }, 'Connection attempt without auth token')
       ws.close(1008, "Unauthorized")
       return
     }
@@ -70,22 +75,32 @@ export function startServer(): Server {
     const room = getOrCreateRoom(roomName)
     touchRoom(room)
     
+    logger.debug({ roomName }, 'Creating connection')
     const conn = await createConn(ws, roomName, authToken)
+
     if (conn.userId === '') {
+      logger.warn({ roomName }, 'Connection rejected: empty userId after auth')
       ws.close(1008, "Unauthorized")
       return
     }
-     if (conn.userRole === UserRole.None) {
+
+    if (conn.userRole === UserRole.None) {
+      logger.warn({ roomName, userId: conn.userId }, 'Connection rejected: user has no access')
       ws.send(JSON.stringify({type: "no-access"}))
       ws.close(1008, "Unauthorized")
       return
     }
+
     room.conns.add(conn)
+    logger.info({ roomName, userId: conn.userId, userRole: conn.userRole, connId: conn.id }, 'Connection established')
 
     room.awareness.setLocalStateField("connectionId", conn.id)
 
     ws.on("message", (data, isBinary) => {
-      if (!isBinary) return
+      if (!isBinary) {
+        logger.debug({ roomName, connId: conn.id }, 'Received non-binary message, ignoring')
+        return
+      }
 
       const messageData: Uint8Array =
         data instanceof ArrayBuffer
@@ -93,52 +108,64 @@ export function startServer(): Server {
           : Array.isArray(data)
             ? new Uint8Array(Buffer.concat(data))
             : new Uint8Array(data as Buffer)
+      
+      logger.trace({ roomName, connId: conn.id, dataSize: messageData.length }, 'Processing incoming message')
       touchRoom(room)
       handleIncoming(room, conn, messageData)
     })
 
     // Handle the Sync Handshake
     const startSync = () => {
-      console.log("sync running")
+      logger.info({ roomName, connId: conn.id }, 'Starting sync handshake')
       sendInitSyncStep(ws, room)
       sendAwareness(ws, room)
       conn.synced = true
+      logger.debug({ roomName, connId: conn.id }, 'Sync handshake complete')
     }
 
     if (room.ready) {
-      console.log("room.ready: start sync")
+      logger.debug({ roomName }, 'Room already ready, starting sync')
       startSync()
     } else {
-      console.log("wait for hydration")
-      // Wait for the hydration to finish
+      logger.debug({ roomName }, 'Room not ready, waiting for hydration')
       room.emitter.once("ready", startSync)
     }
 
-    ws.on("close", () => cleanupConn(room, conn))
-    ws.on("error", () => cleanupConn(room, conn))
+    ws.on("close", () => {
+      logger.info({ roomName, connId: conn.id, userId: conn.userId }, 'Connection closed')
+      cleanupConn(room, conn)
+    })
+
+    ws.on("error", (error) => {
+      logger.error({ roomName, connId: conn.id, error }, 'WebSocket error')
+      cleanupConn(room, conn)
+    })
   })
 
   setupRoomDestroyer()
 
   httpServer.listen(config.PORT, config.HOST, () => {
-    console.log(`listening on http://${config.HOST}:${config.PORT}`)
+    logger.info({ port: config.PORT, host: config.HOST }, 'Server listening')
   })
 
   return httpServer
 }
 
 export async function persistAllRooms() {
+  logger.info({ roomCount: rooms.size }, 'Starting room persistence')
   const promises = Array.from(rooms.values()).map(async room => {
     try {
-      console.log(`[Shutdown] Saving room: ${room.name}`)
+      logger.debug({ roomName: room.name }, 'Saving room state')
       const docId = room.name.replace("doc-", "")
       const stateUpdate = Y.encodeStateAsUpdate(room.doc)
       const binary = Buffer.from(stateUpdate)
 
-      return postDocumentSnapshot(docId, binary)
+      await postDocumentSnapshot(docId, binary)
+      logger.debug({ roomName: room.name, size: binary.length }, 'Room state saved successfully')
     } catch (e) {
-      console.error(`[Shutdown] Failed to save ${room.name}`, e)
+      logger.error({ roomName: room.name, error: e }, 'Failed to save room state')
     }
   })
   await Promise.all(promises)
+  logger.info('Room persistence complete')
 }
