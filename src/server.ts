@@ -12,7 +12,7 @@ import {
   setupRoomDestroyer,
   touchRoom,
 } from "./rooms.js"
-import { handleIncoming, sendAwareness, sendInitSyncStep } from "./yjsProtocol.js"
+import { handleIncoming, sendAwareness, sendSyncStep2 } from "./yjsProtocol.js"
 import { postDocumentSnapshot } from "./internalApi.js"
 import { handleInternalAPI } from "./apiHandlers.js"
 import { UserRole } from "./types.js"
@@ -68,7 +68,7 @@ export function startServer(): Server {
 
     if (!authToken) {
       logger.warn({ roomName }, 'Connection attempt without auth token')
-      ws.close(1008, "Unauthorized")
+      ws.close(4001, "Unauthorized")
       return
     }
 
@@ -80,14 +80,7 @@ export function startServer(): Server {
 
     if (conn.userId === '') {
       logger.warn({ roomName }, 'Connection rejected: empty userId after auth')
-      ws.close(1008, "Unauthorized")
-      return
-    }
-
-    if (conn.userRole === UserRole.None) {
-      logger.warn({ roomName, userId: conn.userId }, 'Connection rejected: user has no access')
-      ws.send(JSON.stringify({type: "no-access"}))
-      ws.close(1008, "Unauthorized")
+      ws.close(4001, "Unauthorized")
       return
     }
 
@@ -117,7 +110,7 @@ export function startServer(): Server {
     // Handle the Sync Handshake
     const startSync = () => {
       logger.info({ roomName, connId: conn.id }, 'Starting sync handshake')
-      sendInitSyncStep(ws, room)
+      sendSyncStep2(ws, room)
       sendAwareness(ws, room)
       conn.synced = true
       logger.debug({ roomName, connId: conn.id }, 'Sync handshake complete')

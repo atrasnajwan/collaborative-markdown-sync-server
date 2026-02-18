@@ -49,7 +49,7 @@ export async function handleInternalAPI(
     if (method === "DELETE" && !action) {
       room.conns.forEach(conn => {
         conn.ws.send(JSON.stringify({ type: "document-deleted" }))
-        conn.ws.close(1000)
+        conn.ws.close(1008, "document deleted")
       })
       rooms.delete(roomName)
 
@@ -68,7 +68,7 @@ export async function handleInternalAPI(
           updated = true
           if (role === UserRole.None) {
             conn.ws.send(JSON.stringify({type: "kicked"}))
-            conn.ws.close(1008, "Unauthorized")
+            conn.ws.close(1008, "No access")
           } else {
             conn.ws.send(
               JSON.stringify({

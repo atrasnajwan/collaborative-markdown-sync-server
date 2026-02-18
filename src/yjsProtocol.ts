@@ -88,14 +88,14 @@ export function broadcastAwarenessUpdate(room: Room, changedClients: number[], o
 }
 
 /**
- * Send the initial sync step (state vector + document) to a new client.
+ * Send the sync step 2 to a new client.
  */
-export function sendInitSyncStep(ws: WebSocket, room: Room) {
+export function sendSyncStep2(ws: WebSocket, room: Room) {
   const message = writeVarUintMessage(messageSync, enc => {
-    syncProtocol.writeSyncStep1(enc, room.doc)
+    syncProtocol.writeSyncStep2(enc, room.doc)
   })
 
-  logger.trace({ roomName: room.name, messageSize: message.length }, 'Sending initial sync step')
+  logger.trace({ roomName: room.name, messageSize: message.length }, 'Sending sync step 2')
   sendMessage(ws, message)
 }
 
@@ -133,7 +133,7 @@ export function handleIncoming(room: Room, conn: Conn, data: Uint8Array) {
       const beforeLength = encoding.length(encoder)
       syncProtocol.readSyncMessage(decoder, encoder, room.doc, conn.ws)
       const afterLength = encoding.length(encoder)
-
+      
       // Only send if something was appended
       if (afterLength > beforeLength) {
         logger.trace({ roomName: room.name, connId: conn.id, responseSize: afterLength - beforeLength }, 'Sending sync response')
