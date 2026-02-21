@@ -10,17 +10,29 @@ WebSocket Yjs sync + awareness server that keeps a Y.Doc in memory per room and 
 
 ## What it does
 
-- Accept WebSocket connections from clients
+- Accept WebSocket connections from clients (auth via `?token=JWT`)
 - Speak Yjs sync + awareness protocols
-- Keep Y.Doc in memory per room
-- Broadcast updates to all peers in the same room
-- Optionally forward updates to a backend via HTTP
+- Keep Y.Doc in memory per room; hydrate from backend on first access
+- Broadcast document and awareness updates to all peers in the same room
+- Enforce roles (owner/editor can edit; viewer read-only)
+- Optionally forward document updates to a backend via HTTP
+
+## Responsibilities
+
+- **WebSocket management** — Accept connections on `ws://HOST:PORT/<room>`, parse room and token from URL, route binary messages per connection, and clean up on close/error. One room per URL path; connections are tracked per room in `rooms.ts`.
+- **Yjs sync protocol** — Handle sync message type (0): apply client updates to the room’s in-memory `Y.Doc`, send sync step 2 to new clients, and broadcast document updates to other peers in the room (see `yjsProtocol.ts`).
+- **Awareness broadcasting** — Handle awareness message types (1, 3): maintain a shared `Awareness` instance per room, apply client awareness updates, broadcast changes to other clients, and send full awareness state on request (see `yjsProtocol.ts`, `rooms.ts`).
+- **Document lifecycle** — Create room (Y.Doc + Awareness) on first connection; hydrate from backend via internal API; apply snapshot + updates to Y.Doc; broadcast and optionally forward updates; destroy idle rooms after `ROOM_TTL_MS`; on shutdown, persist all room states as snapshots to the backend (see `rooms.ts`, `persistence.ts`, `server.ts`).
 
 ## Rooms / URLs
 
-- `ws://localhost:8787/my-room` → room `"my-room"`
-- `ws://localhost:8787/` → room `"default"`
-- Supply auth via query: `ws://host:port/room?token=JWT_HERE`
+- `ws://localhost:8787/<room>` → room name is the path (e.g. `my-room` or `doc-abc123` for document IDs).
+- `ws://localhost:8787/` → room `"default"`.
+- Auth required: `ws://host:port/<room>?token=JWT_HERE`
+
+## Scalability (Redis pub/sub) — *not yet implemented*
+
+Horizontal scaling is planned via **Redis pub/sub**: multiple server instances would share room state by subscribing to per-room channels and publishing document/awareness updates. Each instance would still hold an in-memory Y.Doc per room it serves; Redis would relay updates between instances so that clients connected to different nodes stay in sync. This section will be updated when the feature is implemented.
 
 ## Run (development)
 
