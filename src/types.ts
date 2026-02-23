@@ -19,7 +19,6 @@ export type Conn = {
   closed: boolean
   userId: string
   userRole: UserRole
-  synced: boolean
 }
 
 export type Room = {
