@@ -27,11 +27,11 @@ export const rooms = new Map<RoomName, Room>()
 export function getOrCreateRoom(name: RoomName): Room {
   const existing = rooms.get(name)
   if (existing) {
-    logger.trace({ roomName: name }, 'Retrieved existing room')
+    logger.trace({ roomName: name }, "Retrieved existing room")
     return existing
   }
 
-  logger.info({ roomName: name }, 'Creating new room')
+  logger.info({ roomName: name }, "Creating new room")
   const doc = new Y.Doc()
   const awareness = new awarenessProtocol.Awareness(doc)
 
@@ -48,17 +48,19 @@ export function getOrCreateRoom(name: RoomName): Room {
   rooms.set(name, room)
 
   // set initial content
-  hydrateRoomFromBackend(room).then(() => {
-    logger.info({ roomName: name }, 'Room hydration complete')
-    room.ready = true
+  hydrateRoomFromBackend(room)
+    .then(() => {
+      logger.info({ roomName: name }, "Room hydration complete")
+      room.ready = true
 
-    setupDocListeners(room)
-    setupAwarenessListeners(room)
-    // Tell everyone waiting: "The data is ready!"
-    room.emitter.emit("ready")
-  }).catch(err => {
-    logger.error({ roomName: name, error: err }, 'Room hydration failed')
-  })
+      setupDocListeners(room)
+      setupAwarenessListeners(room)
+      // Tell everyone waiting: "The data is ready!"
+      room.emitter.emit("ready")
+    })
+    .catch(err => {
+      logger.error({ roomName: name, error: err }, "Room hydration failed")
+    })
 
   return room
 }
@@ -78,18 +80,24 @@ function setupDocListeners(room: Room) {
       (originConn.userRole !== UserRole.Owner && originConn.userRole !== UserRole.Editor)
     ) {
       if (originConn) {
-        logger.warn({ roomName: room.name, userId: originConn.userId, userRole: originConn.userRole }, 'Update rejected: insufficient permissions')
+        logger.warn(
+          { roomName: room.name, userId: originConn.userId, userRole: originConn.userRole },
+          "Update rejected: insufficient permissions",
+        )
       }
       return
     }
 
-    logger.trace({ roomName: room.name, updateSize: update.length, userId: originConn.userId }, 'Broadcasting document update')
+    logger.trace(
+      { roomName: room.name, updateSize: update.length, userId: originConn.userId },
+      "Broadcasting document update",
+    )
     broadcastDocUpdate(room, update, origin)
 
     // skip forward update if it's not from origin
     if (!originConn) return
     forwardUpdate(room, update, originConn).catch(err => {
-      logger.error({ roomName: room.name, error: err }, 'Document update forwarding failed')
+      logger.error({ roomName: room.name, error: err }, "Document update forwarding failed")
     })
   })
 }
@@ -104,7 +112,15 @@ function setupAwarenessListeners(room: Room) {
       const changedClients = added.concat(updated, removed)
       if (changedClients.length === 0) return
 
-      logger.trace({ roomName: room.name, added: added.length, updated: updated.length, removed: removed.length }, 'Broadcasting awareness update')
+      logger.trace(
+        {
+          roomName: room.name,
+          added: added.length,
+          updated: updated.length,
+          removed: removed.length,
+        },
+        "Broadcasting awareness update",
+      )
       broadcastAwarenessUpdate(room, changedClients, origin)
     },
   )
@@ -126,23 +142,23 @@ export async function createConn(
   // a random 31‑bit integer for this WebSocket connection and reuse it
   // for the life of the connection.
   const awarenessClientId = (Math.random() * 0x7fffffff) | 0
-  let userId: string = ''
+  let userId: string = ""
   let userRole: UserRole = UserRole.None
 
   try {
     const docId = roomName.replace("doc-", "")
     const authInfo = verifyAuthToken(authToken)
     userId = authInfo.userId
-    logger.debug({ roomName, userId }, 'Token verified')
-    
+    logger.debug({ roomName, userId }, "Token verified")
+
     const roleInfo = await fetchUserRole(docId, userId)
     userRole = roleInfo.role
-    logger.debug({ roomName, userId, userRole }, 'User role fetched')
+    logger.debug({ roomName, userId, userRole }, "User role fetched")
   } catch (err) {
-    logger.warn({ roomName, error: err }, 'Authentication or role fetch failed')
-    ws.send(JSON.stringify({type: 'auth-error'}))
+    logger.warn({ roomName, error: err }, "Authentication or role fetch failed")
+    ws.send(JSON.stringify({ type: "auth-error" }))
   }
-  
+
   const conn = {
     id: randomUUID(),
     ws,
@@ -151,7 +167,6 @@ export async function createConn(
     closed: false,
     userId,
     userRole,
-    synced: false,
   }
   return conn
 }
@@ -164,7 +179,10 @@ export function cleanupConn(room: Room, conn: Conn) {
   conn.closed = true
   room.conns.delete(conn)
 
-  logger.debug({ roomName: room.name, connId: conn.id, userId: conn.userId, totalConns: room.conns.size }, 'Connection cleaned up')
+  logger.debug(
+    { roomName: room.name, connId: conn.id, userId: conn.userId, totalConns: room.conns.size },
+    "Connection cleaned up",
+  )
   awarenessProtocol.removeAwarenessStates(room.awareness, [conn.awarenessClientId], conn.ws)
   touchRoom(room)
 }
@@ -176,24 +194,24 @@ export function setupRoomDestroyer() {
   setInterval(() => {
     const now = Date.now()
     let destroyedCount = 0
-    
+
     for (const [name, room] of rooms.entries()) {
       if (room.conns.size > 0) continue
       if (now - room.lastActiveAt < config.ROOM_TTL_MS) continue
-      
-      logger.info({ roomName: name, idleTime: now - room.lastActiveAt }, 'Destroying idle room')
+
+      logger.info({ roomName: name, idleTime: now - room.lastActiveAt }, "Destroying idle room")
       removeRoom(room, name)
       destroyedCount++
     }
-    
+
     if (destroyedCount > 0) {
-      logger.debug({ destroyedCount, remainingRooms: rooms.size }, 'Room cleanup cycle complete')
+      logger.debug({ destroyedCount, remainingRooms: rooms.size }, "Room cleanup cycle complete")
     }
   }, config.ROOM_TTL_MS)
 }
 
 export function removeRoom(room: Room, name: string) {
-  logger.debug({ roomName: name }, 'Removing room from memory')
+  logger.debug({ roomName: name }, "Removing room from memory")
   room.doc.destroy()
   rooms.delete(name)
 }

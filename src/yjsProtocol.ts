@@ -22,7 +22,7 @@ export function isOpen(ws: WebSocket): boolean {
  */
 export function sendMessage(ws: WebSocket, message: Uint8Array) {
   if (!isOpen(ws)) {
-    logger.trace({ messageSize: message.length }, 'WebSocket not open, message not sent')
+    logger.trace({ messageSize: message.length }, "WebSocket not open, message not sent")
     return
   }
 
@@ -47,7 +47,10 @@ function broadcast(room: Room, message: Uint8Array, except?: WebSocket) {
     sendMessage(c.ws, message)
     sentCount++
   }
-  logger.trace({ roomName: room.name, sentCount, totalConns: room.conns.size }, 'Message broadcast complete')
+  logger.trace(
+    { roomName: room.name, sentCount, totalConns: room.conns.size },
+    "Message broadcast complete",
+  )
 }
 
 /**
@@ -63,8 +66,11 @@ export function broadcastDocUpdate(room: Room, update: Uint8Array, origin: unkno
     typeof origin === "object" && origin && "send" in (origin as any)
       ? (origin as WebSocket)
       : undefined
-  
-  logger.trace({ roomName: room.name, messageSize: message.length, hasOrigin: !!exceptWs }, 'Broadcasting document update')
+
+  logger.trace(
+    { roomName: room.name, messageSize: message.length, hasOrigin: !!exceptWs },
+    "Broadcasting document update",
+  )
   broadcast(room, message, exceptWs)
 }
 
@@ -83,7 +89,14 @@ export function broadcastAwarenessUpdate(room: Room, changedClients: number[], o
       ? (origin as WebSocket)
       : undefined
 
-  logger.trace({ roomName: room.name, changedClientsCount: changedClients.length, messageSize: message.length }, 'Broadcasting awareness update')
+  logger.trace(
+    {
+      roomName: room.name,
+      changedClientsCount: changedClients.length,
+      messageSize: message.length,
+    },
+    "Broadcasting awareness update",
+  )
   broadcast(room, message, exceptWs)
 }
 
@@ -95,8 +108,7 @@ export function sendSyncStep2(ws: WebSocket, room: Room) {
     syncProtocol.writeSyncStep2(enc, room.doc)
   })
 
-  logger.trace({ roomName: room.name, messageSize: message.length }, 'Sending sync step 2')
-  sendMessage(ws, message)
+  logger.trace({ roomName: room.name, messageSize: message.length }, "Sending sync step 2")
 }
 
 /**
@@ -112,7 +124,7 @@ export function sendAwareness(ws: WebSocket, room: Room) {
     encoding.writeVarUint8Array(enc, update)
   })
 
-  logger.trace({ roomName: room.name, messageSize: message.length }, 'Sending awareness state')
+  logger.trace({ roomName: room.name, messageSize: message.length }, "Sending awareness state")
   sendMessage(ws, message)
 }
 
@@ -124,40 +136,51 @@ export function handleIncoming(room: Room, conn: Conn, data: Uint8Array) {
   const decoder = decoding.createDecoder(data)
   const messageType = decoding.readVarUint(decoder)
 
-  logger.trace({ roomName: room.name, connId: conn.id, messageType, dataSize: data.length }, 'Handling incoming message')
+  logger.trace(
+    { roomName: room.name, connId: conn.id, messageType, dataSize: data.length },
+    "Handling incoming message",
+  )
 
   switch (messageType) {
     case messageSync: {
       const encoder = encoding.createEncoder()
       encoding.writeVarUint(encoder, messageSync)
       const beforeLength = encoding.length(encoder)
-      syncProtocol.readSyncMessage(decoder, encoder, room.doc, conn.ws)
+      const messageTypeAfter = syncProtocol.readSyncMessage(decoder, encoder, room.doc, conn.ws)
+      if (messageTypeAfter === 0)
+        logger.debug({ roomName: room.name, connId: conn.id }, "SyncStep1 Received")
       const afterLength = encoding.length(encoder)
-      
+
       // Only send if something was appended
       if (afterLength > beforeLength) {
-        logger.trace({ roomName: room.name, connId: conn.id, responseSize: afterLength - beforeLength }, 'Sending sync response')
+        logger.trace(
+          { roomName: room.name, connId: conn.id, responseSize: afterLength - beforeLength },
+          "Sending sync response",
+        )
         sendMessage(conn.ws, encoding.toUint8Array(encoder))
       }
       break
     }
     case messageAwareness: {
       const update = decoding.readVarUint8Array(decoder)
-      logger.trace({ roomName: room.name, connId: conn.id, updateSize: update.length }, 'Applying awareness update')
+      logger.trace(
+        { roomName: room.name, connId: conn.id, updateSize: update.length },
+        "Applying awareness update",
+      )
       awarenessProtocol.applyAwarenessUpdate(room.awareness, update, conn.ws)
       break
     }
     case messageAuth: {
-      logger.trace({ roomName: room.name, connId: conn.id }, 'Auth message received (no-op)')
+      logger.trace({ roomName: room.name, connId: conn.id }, "Auth message received (no-op)")
       break
     }
     case messageQueryAwareness: {
-      logger.trace({ roomName: room.name, connId: conn.id }, 'Query awareness request received')
+      logger.trace({ roomName: room.name, connId: conn.id }, "Query awareness request received")
       sendAwareness(conn.ws, room)
       break
     }
     default: {
-      logger.warn({ roomName: room.name, connId: conn.id, messageType }, 'Unknown message type')
+      logger.warn({ roomName: room.name, connId: conn.id, messageType }, "Unknown message type")
       break
     }
   }

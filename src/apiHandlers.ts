@@ -67,7 +67,7 @@ export async function handleInternalAPI(
           conn.userRole = role
           updated = true
           if (role === UserRole.None) {
-            conn.ws.send(JSON.stringify({type: "kicked"}))
+            conn.ws.send(JSON.stringify({ type: "kicked" }))
             conn.ws.close(1008, "No access")
           } else {
             conn.ws.send(

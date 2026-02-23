@@ -30,22 +30,23 @@ WebSocket Yjs sync + awareness server that keeps a Y.Doc in memory per room and 
 - `ws://localhost:8787/` → room `"default"`.
 - Auth required: `ws://host:port/<room>?token=JWT_HERE`
 
-## Scalability (Redis pub/sub) — *not yet implemented*
+## Scalability (Redis pub/sub) — _not yet implemented_
 
 Horizontal scaling is planned via **Redis pub/sub**: multiple server instances would share room state by subscribing to per-room channels and publishing document/awareness updates. Each instance would still hold an in-memory Y.Doc per room it serves; Redis would relay updates between instances so that clients connected to different nodes stay in sync. This section will be updated when the feature is implemented.
 
 ## Run (development)
 
 ```sh
-npm install
-npm run dev
+pnpm install
+pnpm run dev
+LOG_LEVEL=debug pnpm run dev // run with log level
 ```
 
 ## Build / Start (production)
 
 ```sh
-npm run build
-npm start
+pnpm run build
+pnpm start
 ```
 
 ## HTTP endpoints
