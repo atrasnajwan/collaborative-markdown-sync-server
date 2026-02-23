@@ -12,7 +12,7 @@ import {
   setupRoomDestroyer,
   touchRoom,
 } from "./rooms.js"
-import { handleIncoming, sendAwareness, sendSyncStep2 } from "./yjsProtocol.js"
+import { handleIncoming, sendAwareness, sendSyncStep1 } from "./yjsProtocol.js"
 import { postDocumentSnapshot } from "./internalApi.js"
 import { handleInternalAPI } from "./apiHandlers.js"
 import { Conn, Room } from "./types.js"
@@ -105,12 +105,13 @@ export function startServer(): Server {
         // Handle the Sync Handshake
         const startSync = () => {
           logger.info({ roomName, connId: conn.id }, "Starting sync handshake")
-          ws.off("message", handleMessage) // Remove the temporary listener
 
           // re-attach listener
           ws.on("message", (data, isBinary) =>
             handleOnMessage(data, isBinary, room, roomName, conn),
           )
+
+          ws.off("message", handleMessage) // Remove the temporary listener
 
           // Drain the queue (Process messages sent during room preparation)
           logger.debug({ messageQueue: messageQueue.length }, "Message queue before init")
@@ -122,7 +123,13 @@ export function startServer(): Server {
             handleOnMessage(msg.data, msg.isBinary, room, roomName, conn)
           }
 
-          sendSyncStep2(ws, room)
+          /*
+           * The server should reply with SyncStep2 followed by SyncStep1.
+           * SyncStep2 is already handled by handleIncoming
+           * but we send SyncStep1 here to be absolutely sure
+           * the client can finish its side.
+           */
+          sendSyncStep1(ws, room)
           sendAwareness(ws, room)
           logger.debug({ roomName, connId: conn.id }, "Sync handshake complete")
         }

@@ -101,6 +101,18 @@ export function broadcastAwarenessUpdate(room: Room, changedClients: number[], o
 }
 
 /**
+ * Send the sync step 1 to a new client.
+ */
+export function sendSyncStep1(ws: WebSocket, room: Room) {
+  const message = writeVarUintMessage(messageSync, enc => {
+    syncProtocol.writeSyncStep1(enc, room.doc)
+  })
+
+  logger.debug({ roomName: room.name, messageSize: message.length }, "Sending sync step 1")
+  sendMessage(ws, message)
+}
+
+/**
  * Send the sync step 2 to a new client.
  */
 export function sendSyncStep2(ws: WebSocket, room: Room) {
@@ -148,8 +160,6 @@ export function handleIncoming(room: Room, conn: Conn, data: Uint8Array) {
       encoding.writeVarUint(encoder, messageSync)
       const beforeLength = encoding.length(encoder)
       const messageTypeAfter = syncProtocol.readSyncMessage(decoder, encoder, room.doc, conn.ws)
-      if (messageTypeAfter === 0)
-        logger.debug({ roomName: room.name, connId: conn.id }, "SyncStep1 Received")
       const afterLength = encoding.length(encoder)
 
       // Only send if something was appended
@@ -158,6 +168,9 @@ export function handleIncoming(room: Room, conn: Conn, data: Uint8Array) {
           { roomName: room.name, connId: conn.id, responseSize: afterLength - beforeLength },
           "Sending sync response",
         )
+        if (messageTypeAfter === 0)
+          logger.debug({ roomName: room.name, connId: conn.id }, "Sending SyncStep2")
+
         sendMessage(conn.ws, encoding.toUint8Array(encoder))
       }
       break
