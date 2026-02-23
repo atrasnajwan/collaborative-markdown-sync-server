@@ -5,7 +5,7 @@ import * as awarenessProtocol from "y-protocols/awareness"
 import type { WebSocket } from "ws"
 
 import { config } from "./config.js"
-import { forwardUpdate } from "./forwarding.js"
+import { forwardUpdate, forwardUpdateNow } from "./forwarding.js"
 import { broadcastAwarenessUpdate, broadcastDocUpdate } from "./yjsProtocol.js"
 import { UserRole, type Conn, type Room, type RoomName } from "./types.js"
 import { verifyAuthToken } from "./auth.js"
@@ -191,13 +191,29 @@ export function cleanupConn(room: Room, conn: Conn) {
  * Periodically scan for idle rooms(unused for certain time) and destroy their Y.Doc instances.
  */
 export function setupRoomDestroyer() {
-  setInterval(() => {
+  setInterval(async () => {
     const now = Date.now()
     let destroyedCount = 0
 
     for (const [name, room] of rooms.entries()) {
       if (room.conns.size > 0) continue
       if (now - room.lastActiveAt < config.ROOM_TTL_MS) continue
+
+      // If there's a pending debounce timer, clear it and save
+      if (room.forwardQueue?.timer) {
+        logger.info({ roomName: name }, "Flushing pending updates before destruction")
+        clearTimeout(room.forwardQueue.timer)
+        
+        // Merge whatever is left in the queue and send to API
+        if (room.forwardQueue.updates.length > 0) {
+          const finalUpdate = Y.mergeUpdates(room.forwardQueue.updates)
+          try {
+            await forwardUpdateNow(room, finalUpdate, room.forwardQueue.lastUserId) 
+          } catch (err) {
+            logger.error({ roomName: name, err }, "Final flush failed during destruction")
+          }
+        }
+      }
 
       logger.info({ roomName: name, idleTime: now - room.lastActiveAt }, "Destroying idle room")
       removeRoom(room, name)

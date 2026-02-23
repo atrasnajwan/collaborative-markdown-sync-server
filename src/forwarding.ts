@@ -20,14 +20,16 @@ export async function forwardUpdate(room: Room, update: Uint8Array, conn: Conn) 
       { roomName: room.name, updateSize: update.length },
       "Forwarding update immediately",
     )
-    return forwardUpdateNow(room, update, conn)
+    return forwardUpdateNow(room, update, conn.userId)
   }
 
   if (!room.forwardQueue) {
-    room.forwardQueue = { updates: [] }
+    room.forwardQueue = { updates: [], lastUserId: conn.userId }
   }
-
+  
   room.forwardQueue.updates.push(update)
+  room.forwardQueue.lastUserId = conn.userId // Track the most recent editor
+
   logger.trace(
     { roomName: room.name, queueSize: room.forwardQueue.updates.length },
     "Queued update for debounced forwarding",
@@ -40,7 +42,8 @@ export async function forwardUpdate(room: Room, update: Uint8Array, conn: Conn) 
   room.forwardQueue.timer = setTimeout(async () => {
     if (!room.forwardQueue || room.forwardQueue.updates.length === 0) return
 
-    const mergedUpdate = Y.encodeStateAsUpdate(room.doc)
+    const mergedUpdate = Y.mergeUpdates(room.forwardQueue.updates)
+    const lastUserId = room.forwardQueue.lastUserId
     logger.debug(
       {
         roomName: room.name,
@@ -54,22 +57,24 @@ export async function forwardUpdate(room: Room, update: Uint8Array, conn: Conn) 
     room.forwardQueue.timer = undefined
 
     try {
-      await forwardUpdateNow(room, mergedUpdate, conn)
+      await forwardUpdateNow(room, mergedUpdate, lastUserId)
     } catch (err) {
       logger.error({ roomName: room.name, error: err }, "Failed to forward merged updates")
+      // put updates back in front of queue
+      room.forwardQueue.updates.unshift(mergedUpdate)
     }
   }, config.FORWARD_DEBOUNCE_MS)
 }
 
-async function forwardUpdateNow(room: Room, update: Uint8Array, conn: Conn): Promise<void> {
+export async function forwardUpdateNow(room: Room, update: Uint8Array, userId: string): Promise<void> {
   const docId = room.name.replace("doc-", "")
   logger.debug(
-    { roomName: room.name, docId, userId: conn.userId, updateSize: update.length },
+    { roomName: room.name, docId, userId: userId, updateSize: update.length },
     "Forwarding update to backend",
   )
 
   try {
-    await postDocumentUpdate(docId, update, conn.userId)
+    await postDocumentUpdate(docId, update, userId)
     logger.trace({ roomName: room.name, docId }, "Update forwarded successfully")
   } catch (err) {
     logger.error({ roomName: room.name, docId, error: err }, "Failed to forward update to backend")
