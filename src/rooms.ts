@@ -203,12 +203,12 @@ export function setupRoomDestroyer() {
       if (room.forwardQueue?.timer) {
         logger.info({ roomName: name }, "Flushing pending updates before destruction")
         clearTimeout(room.forwardQueue.timer)
-        
+
         // Merge whatever is left in the queue and send to API
         if (room.forwardQueue.updates.length > 0) {
           const finalUpdate = Y.mergeUpdates(room.forwardQueue.updates)
           try {
-            await forwardUpdateNow(room, finalUpdate, room.forwardQueue.lastUserId) 
+            await forwardUpdateNow(room, finalUpdate, room.forwardQueue.lastUserId)
           } catch (err) {
             logger.error({ roomName: name, err }, "Final flush failed during destruction")
           }

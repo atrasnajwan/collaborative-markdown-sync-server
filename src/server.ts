@@ -12,7 +12,7 @@ import {
   setupRoomDestroyer,
   touchRoom,
 } from "./rooms.js"
-import { handleIncoming, sendAwareness, sendSyncStep2 } from "./yjsProtocol.js"
+import { handleIncoming, sendAwareness } from "./yjsProtocol.js"
 import { postDocumentSnapshot } from "./internalApi.js"
 import { handleInternalAPI } from "./apiHandlers.js"
 import { Conn, Room } from "./types.js"
@@ -102,28 +102,26 @@ export function startServer(): Server {
 
         room.awareness.setLocalStateField("connectionId", conn.id)
 
-        ws.off("message", handleMessage) // Remove the temporary listener
-
-        // re-attach listener
-        ws.on("message", (data, isBinary) => {
-          logger.trace({ roomName, connId: conn.id }, "Processing incoming message")
-          handleOnMessage(data, isBinary, room, roomName, conn)
-        })
-
-        // Drain the queue (Process messages sent during the 'await')
-        logger.debug({ messageQueue: messageQueue.length }, "Message queue before init")
-        for (const msg of messageQueue) {
-          logger.trace(
-            { roomName, connId: conn.id, data: msg.data.length },
-            "Processing queue message",
-          )
-          handleOnMessage(msg.data, msg.isBinary, room, roomName, conn)
-        }
-
         // Handle the Sync Handshake
         const startSync = () => {
           logger.info({ roomName, connId: conn.id }, "Starting sync handshake")
-          sendSyncStep2(ws, room)
+          ws.off("message", handleMessage) // Remove the temporary listener
+
+          // re-attach listener
+          ws.on("message", (data, isBinary) =>
+            handleOnMessage(data, isBinary, room, roomName, conn),
+          )
+
+          // Drain the queue (Process messages sent during room preparation)
+          logger.debug({ messageQueue: messageQueue.length }, "Message queue before init")
+          for (const msg of messageQueue) {
+            logger.trace(
+              { roomName, connId: conn.id, data: msg.data.length },
+              "Processing queue message",
+            )
+            handleOnMessage(msg.data, msg.isBinary, room, roomName, conn)
+          }
+
           sendAwareness(ws, room)
           logger.debug({ roomName, connId: conn.id }, "Sync handshake complete")
         }

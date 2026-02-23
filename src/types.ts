@@ -7,7 +7,7 @@ export type RoomName = string
 
 export type ForwardQueue = {
   timer?: NodeJS.Timeout
-  updates: Uint8Array[],
+  updates: Uint8Array[]
   lastUserId: string
 }
 

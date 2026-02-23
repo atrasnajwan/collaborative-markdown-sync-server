@@ -26,7 +26,7 @@ export async function forwardUpdate(room: Room, update: Uint8Array, conn: Conn) 
   if (!room.forwardQueue) {
     room.forwardQueue = { updates: [], lastUserId: conn.userId }
   }
-  
+
   room.forwardQueue.updates.push(update)
   room.forwardQueue.lastUserId = conn.userId // Track the most recent editor
 
@@ -66,7 +66,11 @@ export async function forwardUpdate(room: Room, update: Uint8Array, conn: Conn) 
   }, config.FORWARD_DEBOUNCE_MS)
 }
 
-export async function forwardUpdateNow(room: Room, update: Uint8Array, userId: string): Promise<void> {
+export async function forwardUpdateNow(
+  room: Room,
+  update: Uint8Array,
+  userId: string,
+): Promise<void> {
   const docId = room.name.replace("doc-", "")
   logger.debug(
     { roomName: room.name, docId, userId: userId, updateSize: update.length },
