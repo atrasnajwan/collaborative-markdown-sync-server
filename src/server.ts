@@ -12,7 +12,7 @@ import {
   setupRoomDestroyer,
   touchRoom,
 } from "./rooms.js"
-import { handleIncoming, sendAwareness } from "./yjsProtocol.js"
+import { handleIncoming, sendAwareness, sendSyncStep2 } from "./yjsProtocol.js"
 import { postDocumentSnapshot } from "./internalApi.js"
 import { handleInternalAPI } from "./apiHandlers.js"
 import { Conn, Room } from "./types.js"
@@ -122,6 +122,7 @@ export function startServer(): Server {
             handleOnMessage(msg.data, msg.isBinary, room, roomName, conn)
           }
 
+          sendSyncStep2(ws, room)
           sendAwareness(ws, room)
           logger.debug({ roomName, connId: conn.id }, "Sync handshake complete")
         }

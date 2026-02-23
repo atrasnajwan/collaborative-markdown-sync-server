@@ -109,6 +109,7 @@ export function sendSyncStep2(ws: WebSocket, room: Room) {
   })
 
   logger.trace({ roomName: room.name, messageSize: message.length }, "Sending sync step 2")
+  sendMessage(ws, message)
 }
 
 /**
