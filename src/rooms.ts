@@ -156,7 +156,9 @@ export async function createConn(
     logger.debug({ roomName, userId, userRole }, "User role fetched")
   } catch (err) {
     logger.warn({ roomName, error: err }, "Authentication or role fetch failed")
-    ws.send(JSON.stringify({ type: "auth-error" }))
+    ws.send(JSON.stringify({ type: "auth-error" }), err => {
+      if (err) logger.error({ error: err, userId }, "Failed to notify client of auth error")
+    })
   }
 
   const conn = {
