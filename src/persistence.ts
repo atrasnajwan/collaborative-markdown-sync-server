@@ -15,7 +15,7 @@ export type DocumentState = {
   updates: DocumentUpdateDTO[]
 }
 
-function decodeBase64ToUint8Array(b64: string): Uint8Array {
+export function decodeBase64ToUint8Array(b64: string): Uint8Array {
   return Uint8Array.from(Buffer.from(b64, "base64"))
 }
 

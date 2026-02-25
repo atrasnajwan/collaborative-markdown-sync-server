@@ -13,6 +13,7 @@ import { hydrateRoomFromBackend } from "./persistence.js"
 import { fetchUserRole } from "./internalApi.js"
 import EventEmitter from "node:events"
 import { logger } from "./logger.js"
+import { syncRedis } from "./redis.js"
 
 /**
  * In‑memory registry of all active rooms
@@ -67,6 +68,13 @@ export function getOrCreateRoom(name: RoomName): Room {
 
 function setupDocListeners(room: Room) {
   room.doc.on("update", (update: Uint8Array, origin: unknown) => {
+    if (origin === "redis") {
+      logger.trace({ roomName: room.name }, "Applying authorized update from Redis")
+      // We only broadcast to LOCAL users connected to this server
+      broadcastDocUpdate(room, update, origin)
+      return // Stop here so we don't re-publish to Redis
+    }
+
     // get origin connection
     let originConn: Conn | undefined
     if (origin && typeof origin === "object" && "send" in (origin as any)) {
@@ -92,7 +100,11 @@ function setupDocListeners(room: Room) {
       { roomName: room.name, updateSize: update.length, userId: originConn.userId },
       "Broadcasting document update",
     )
+
     broadcastDocUpdate(room, update, origin)
+
+    // publish update to redis
+    syncRedis.publishDoc(room.name, update)
 
     // skip forward update if it's not from origin
     if (!originConn) return
@@ -156,9 +168,6 @@ export async function createConn(
     logger.debug({ roomName, userId, userRole }, "User role fetched")
   } catch (err) {
     logger.warn({ roomName, error: err }, "Authentication or role fetch failed")
-    ws.send(JSON.stringify({ type: "auth-error" }), err => {
-      if (err) logger.error({ error: err, userId }, "Failed to notify client of auth error")
-    })
   }
 
   const conn = {
@@ -187,6 +196,11 @@ export function cleanupConn(room: Room, conn: Conn) {
   )
   awarenessProtocol.removeAwarenessStates(room.awareness, [conn.awarenessClientId], conn.ws)
   touchRoom(room)
+
+  if (room.conns.size === 0) {
+    // unsubscribe channel
+    syncRedis.unsubscribeDoc(room.name)
+  }
 }
 
 /**

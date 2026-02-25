@@ -15,7 +15,8 @@ import {
 import { handleIncoming, sendAwareness, sendSyncStep1 } from "./yjsProtocol.js"
 import { postDocumentSnapshot } from "./internalApi.js"
 import { handleInternalAPI } from "./apiHandlers.js"
-import { Conn, Room } from "./types.js"
+import { Conn, Room, UserRole } from "./types.js"
+import { syncRedis } from "./redis.js"
 
 /**
  * Boot the HTTP + WebSocket server.
@@ -88,11 +89,13 @@ export function startServer(): Server {
         logger.debug({ roomName }, "Creating connection")
         const conn = await createConn(ws, roomName, authToken)
 
-        if (conn.userId === "") {
-          logger.warn({ roomName }, "Connection rejected: empty userId after auth")
+        if (conn.userId === "" || conn.userRole === UserRole.None) {
+          logger.warn({ roomName }, "Connection rejected!")
           ws.close(4001, "Unauthorized")
           return
         }
+        // subscribe to doc channel
+        syncRedis.subscribeDoc(room)
 
         room.conns.add(conn)
         logger.info(
