@@ -94,8 +94,6 @@ export function startServer(): Server {
           ws.close(4001, "Unauthorized")
           return
         }
-        // subscribe to doc channel
-        syncRedis.subscribeDoc(room)
 
         room.conns.add(conn)
         logger.info(
@@ -104,6 +102,11 @@ export function startServer(): Server {
         )
 
         room.awareness.setLocalStateField("connectionId", conn.id)
+
+        // subscribe to doc channel
+        syncRedis.subscribeDoc(room)
+        // subscribe to awareness channel
+        syncRedis.subscribeAwareness(room)
 
         // Handle the Sync Handshake
         const startSync = () => {

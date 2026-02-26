@@ -1,5 +1,6 @@
 import jwt, { type JwtPayload } from "jsonwebtoken"
 import { config } from "./config.js"
+import { logger } from "./logger.js"
 
 export type AuthInfo = {
   userId: string
@@ -11,6 +12,7 @@ export type AuthInfo = {
  */
 export function verifyAuthToken(token: string): AuthInfo {
   if (!config.JWT_SECRET) {
+    logger.error("JWT_SECRET is not configured")
     throw new Error("JWT_SECRET is not configured")
   }
 
@@ -20,6 +22,7 @@ export function verifyAuthToken(token: string): AuthInfo {
 
   const raw = (payload as any).user_id as number | string | undefined
   if (raw === undefined) {
+    logger.error("JWT missing user_id claim")
     throw new Error("JWT missing user_id claim")
   }
 

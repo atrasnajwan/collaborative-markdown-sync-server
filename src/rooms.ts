@@ -124,6 +124,13 @@ function setupAwarenessListeners(room: Room) {
       const changedClients = added.concat(updated, removed)
       if (changedClients.length === 0) return
 
+      if (origin === "redis") {
+        logger.trace({ roomName: room.name }, "[Awareness] Applying authorized update from Redis")
+        // We only broadcast to LOCAL users connected to this server
+        broadcastAwarenessUpdate(room, changedClients, origin)
+        return // Stop here so we don't re-publish to Redis
+      }
+
       logger.trace(
         {
           roomName: room.name,
@@ -134,6 +141,8 @@ function setupAwarenessListeners(room: Room) {
         "Broadcasting awareness update",
       )
       broadcastAwarenessUpdate(room, changedClients, origin)
+      // publish update to redis
+      syncRedis.publishAwareness(room, changedClients)
     },
   )
 }
@@ -200,6 +209,7 @@ export function cleanupConn(room: Room, conn: Conn) {
   if (room.conns.size === 0) {
     // unsubscribe channel
     syncRedis.unsubscribeDoc(room.name)
+    syncRedis.unsubscribeAwareness(room.name)
   }
 }
 
