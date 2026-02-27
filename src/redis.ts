@@ -18,8 +18,13 @@ class SyncRedis {
       url: config.REDIS_ADDRESS,
       socket: {
         connectTimeout: 10000, //10s
-        // Prevents app crash if Redis restarts
-        reconnectStrategy: retries => Math.min(retries * 50, 2000),
+        reconnectStrategy: (retries) => {
+        if (retries > 20) {
+          logger.error("Redis reconnection failed after 20 attempts. Giving up.");
+          return new Error("Redis reconnection failed");
+        }
+        return Math.min(retries * 50, 2000);
+      },
       },
     })
     this.subClient = this.pubClient.duplicate()

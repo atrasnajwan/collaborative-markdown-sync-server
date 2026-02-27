@@ -163,20 +163,19 @@ export async function createConn(
   // a random 31‑bit integer for this WebSocket connection and reuse it
   // for the life of the connection.
   const awarenessClientId = (Math.random() * 0x7fffffff) | 0
-  let userId: string = ""
+  const docId = roomName.replace("doc-", "")
+  const authInfo = verifyAuthToken(authToken, ws)
+  const userId = authInfo.userId
+  logger.debug({ roomName, userId }, "Token verified")
+  
   let userRole: UserRole = UserRole.None
-
   try {
-    const docId = roomName.replace("doc-", "")
-    const authInfo = verifyAuthToken(authToken)
-    userId = authInfo.userId
-    logger.debug({ roomName, userId }, "Token verified")
-
     const roleInfo = await fetchUserRole(docId, userId)
     userRole = roleInfo.role
     logger.debug({ roomName, userId, userRole }, "User role fetched")
   } catch (err) {
-    logger.warn({ roomName, error: err }, "Authentication or role fetch failed")
+    logger.warn({ roomName, error: err }, "Role fetch failed")
+    ws.close(4001, "Unauthorized")
   }
 
   const conn = {

@@ -89,12 +89,6 @@ export function startServer(): Server {
         logger.debug({ roomName }, "Creating connection")
         const conn = await createConn(ws, roomName, authToken)
 
-        if (conn.userId === "" || conn.userRole === UserRole.None) {
-          logger.warn({ roomName }, "Connection rejected!")
-          ws.close(4001, "Unauthorized")
-          return
-        }
-
         room.conns.add(conn)
         logger.info(
           { roomName, userId: conn.userId, userRole: conn.userRole, connId: conn.id },
