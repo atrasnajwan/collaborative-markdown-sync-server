@@ -17,9 +17,10 @@ try {
   logger.info("Connecting redis...")
   await syncRedis.connect()
 } catch (err) {
-  logger.error({ error: err }, "[Shutdown] Error during starting redis")
-  process.exit(1)
+  logger.error({ error: err }, "Error during starting redis")
+  logger.info("Running in Single-Server mode.")
 }
+
 const server = startServer()
 
 let isShuttingDown = false
@@ -49,7 +50,6 @@ async function gracefulShutdown(signal: string) {
       await persistAllRooms()
     }
 
-    logger.info(`[Shutdown] Disconnecting redis...`)
     await syncRedis.disconnect()
 
     logger.debug("[Shutdown] All data saved. Clean exit.")

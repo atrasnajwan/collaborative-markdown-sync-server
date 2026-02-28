@@ -13,37 +13,36 @@ export type AuthInfo = {
  */
 export function verifyAuthToken(token: string, ws: WebSocket): AuthInfo {
   try {
-    const decoded = jwt.verify(token, config.JWT_SECRET);
-    
-    const payload: JwtPayload =
-      typeof decoded === "string" ? JSON.parse(decoded) : (decoded as JwtPayload);
+    const decoded = jwt.verify(token, config.JWT_SECRET)
 
-    const raw = (payload as any).user_id as number | string | undefined;
+    const payload: JwtPayload =
+      typeof decoded === "string" ? JSON.parse(decoded) : (decoded as JwtPayload)
+
+    const raw = (payload as any).user_id as number | string | undefined
 
     // Payload Validation
     if (raw === undefined) {
-      logger.error("JWT missing user_id claim");
-      closeWithError(ws, "Invalid token payload");
-      throw new Error("JWT missing user_id claim");
+      logger.error("JWT missing user_id claim")
+      closeWithError(ws, "Invalid token payload")
+      throw new Error("JWT missing user_id claim")
     }
 
-    const userId = typeof raw === "number" ? String(raw) : raw;
-    return { userId };
-
+    const userId = typeof raw === "number" ? String(raw) : raw
+    return { userId }
   } catch (err: any) {
-    let reason = "Unauthorized";
+    let reason = "Unauthorized"
     if (err.name === "TokenExpiredError") {
-      reason = "Token expired";
-      logger.warn({ token }, "Client attempted connection with expired token");
+      reason = "Token expired"
+      logger.warn({ token }, "Client attempted connection with expired token")
     } else {
-      logger.warn({ err }, "JWT verification failed");
+      logger.warn({ err }, "JWT verification failed")
     }
 
-    closeWithError(ws, reason);
-    throw err; 
+    closeWithError(ws, reason)
+    throw err
   }
 }
 
 function closeWithError(ws: WebSocket, reason: string) {
-    ws.close(4001, reason);
+  ws.close(4001, reason)
 }

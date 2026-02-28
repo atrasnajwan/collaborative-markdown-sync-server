@@ -6,7 +6,7 @@ import type { WebSocket } from "ws"
 
 import { config } from "./config.js"
 import { forwardUpdate, forwardUpdateNow } from "./forwarding.js"
-import { broadcastAwarenessUpdate, broadcastDocUpdate } from "./yjsProtocol.js"
+import { broadcastAwarenessUpdate, broadcastDocUpdate, isOpen } from "./yjsProtocol.js"
 import { UserRole, type Conn, type Room, type RoomName } from "./types.js"
 import { verifyAuthToken } from "./auth.js"
 import { hydrateRoomFromBackend } from "./persistence.js"
@@ -167,7 +167,7 @@ export async function createConn(
   const authInfo = verifyAuthToken(authToken, ws)
   const userId = authInfo.userId
   logger.debug({ roomName, userId }, "Token verified")
-  
+
   let userRole: UserRole = UserRole.None
   try {
     const roleInfo = await fetchUserRole(docId, userId)
@@ -207,8 +207,7 @@ export function cleanupConn(room: Room, conn: Conn) {
 
   if (room.conns.size === 0) {
     // unsubscribe channel
-    syncRedis.unsubscribeDoc(room.name)
-    syncRedis.unsubscribeAwareness(room.name)
+    syncRedis.unsubscribeRoom(room.name)
   }
 }
 
@@ -241,7 +240,7 @@ export function setupRoomDestroyer() {
       }
 
       logger.info({ roomName: name, idleTime: now - room.lastActiveAt }, "Destroying idle room")
-      removeRoom(room, name)
+      removeRoom(room)
       destroyedCount++
     }
 
@@ -251,8 +250,80 @@ export function setupRoomDestroyer() {
   }, config.ROOM_TTL_MS)
 }
 
-export function removeRoom(room: Room, name: string) {
-  logger.debug({ roomName: name }, "Removing room from memory")
+export function removeRoom(room: Room) {
+  logger.debug({ roomName: room.name }, "Removing room from memory")
   room.doc.destroy()
-  rooms.delete(name)
+  rooms.delete(room.name)
+}
+
+/**
+ * Delete room and notify all clients
+ */
+export async function handleDocumentDeleted(roomName: string): Promise<number> {
+  const room = rooms.get(roomName)
+  if (!room) return 0
+
+  const notificationPromises: Promise<void>[] = []
+  room.conns.forEach(conn => {
+    if (isOpen(conn.ws)) {
+      // kick client from room
+      const promise = new Promise<void>((resolve, reject) => {
+        conn.ws.send(JSON.stringify({ type: "document-deleted" }), err => {
+          if (err) return reject(err)
+          conn.ws.close(1008, "document deleted")
+          resolve()
+        })
+      })
+      notificationPromises.push(promise)
+    }
+  })
+  await Promise.all(notificationPromises)
+  removeRoom(room)
+  return notificationPromises.length
+}
+
+/**
+ * Notify client its role changed
+ */
+export async function handleUserRoleChanged(
+  roomName: string,
+  userId: string,
+  role: string,
+): Promise<number> {
+  const room = rooms.get(roomName)
+  if (!room) return 0
+
+  const notificationPromises: Promise<void>[] = []
+
+  room.conns.forEach(conn => {
+    if (conn.userId === String(userId)) {
+      conn.userRole = role as UserRole
+      if (isOpen(conn.ws)) {
+        // Create a promise for each WS notification
+        const promise = new Promise<void>((resolve, reject) => {
+          if (role === UserRole.None) {
+            // kick client from room
+            conn.ws.send(JSON.stringify({ type: "kicked" }), err => {
+              if (err) return reject(err)
+              conn.ws.close(1008, "No access")
+              resolve()
+            })
+          } else {
+            conn.ws.send(JSON.stringify({ type: "permission-changed", role }), err => {
+              if (err) return reject(err)
+              resolve()
+            })
+          }
+        })
+        notificationPromises.push(promise)
+      }
+    }
+  })
+  await Promise.all(notificationPromises)
+  return notificationPromises.length
+}
+
+export function getLatestDocState(room: Room): Buffer<ArrayBuffer> {
+  const stateUpdate = Y.encodeStateAsUpdate(room.doc)
+  return Buffer.from(stateUpdate)
 }
