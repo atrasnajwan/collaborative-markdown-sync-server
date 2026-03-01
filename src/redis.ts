@@ -246,6 +246,38 @@ class SyncRedis {
     return this.pubClient.publish(channel, message)
   }
 
+  /**
+   * Acquire a short-lived distributed lock for the given room used during
+   * destruction/flush. Returns `true` if the lock was obtained, `false`
+   * otherwise. The lock expires automatically after a few seconds to avoid
+   * blocking other servers indefinitely.
+   */
+  public async acquireForwardLock(roomName: string): Promise<boolean> {
+    if (!this.isEnabled || !this.pubClient) return false
+    const key = `lock:forward:${roomName}`
+    try {
+      const res = await this.pubClient.set(key, "1", { NX: true, PX: 5000 })
+      // Redis client returns 'OK' on success, null if key already exists
+      return res === "OK"
+    } catch (err) {
+      logger.error({ roomName, error: err }, "Failed to acquire forward lock")
+      return false
+    }
+  }
+
+  /**
+   * Release the forward lock
+   */
+  public async releaseForwardLock(roomName: string): Promise<void> {
+    if (!this.isEnabled || !this.pubClient) return
+    const key = `lock:forward:${roomName}`
+    try {
+      await this.pubClient.del(key)
+    } catch (err) {
+      logger.error({ roomName, error: err }, "Failed to release forward lock")
+    }
+  }
+
   public unsubscribeRoom(roomName: string) {
     if (!this.isEnabled || !this.subClient) return
     const docChannel = this.getDocChannel(roomName)

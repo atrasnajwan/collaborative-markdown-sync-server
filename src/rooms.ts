@@ -227,7 +227,19 @@ export function setupRoomDestroyer() {
         if (room.forwardQueue.updates.length > 0) {
           const finalUpdate = Y.mergeUpdates(room.forwardQueue.updates)
           try {
-            await forwardUpdateNow(room, finalUpdate, room.forwardQueue.lastUserId)
+            // only one server should forward when multiple instances host the same
+            // document. use a redis-backed lock to ensure the request is sent once.
+            const locked = await syncRedis.acquireForwardLock(room.name)
+            if (locked) {
+              await forwardUpdateNow(room, finalUpdate, room.forwardQueue.lastUserId)
+              // release lock
+              await syncRedis.releaseForwardLock(room.name)
+            } else {
+              logger.trace(
+                { roomName: name },
+                "Skipping flush: another instance already forwarded update",
+              )
+            }
           } catch (err) {
             logger.error({ roomName: name, err }, "Final flush failed during destruction")
           }
