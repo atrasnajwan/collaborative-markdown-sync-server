@@ -8,8 +8,18 @@
  * - Forwards doc updates to API via HTTP POST
  */
 
+import { logger } from "./logger.js"
+import { syncRedis } from "./redis.js"
 import { rooms } from "./rooms.js"
 import { persistAllRooms, startServer } from "./server.js"
+
+try {
+  logger.info("Connecting redis...")
+  await syncRedis.connect()
+} catch (err) {
+  logger.error({ error: err }, "Error during starting redis")
+  logger.info("Running in Single-Server mode.")
+}
 
 const server = startServer()
 
@@ -19,32 +29,34 @@ async function gracefulShutdown(signal: string) {
   if (isShuttingDown) return
   isShuttingDown = true
 
-  console.log(`\n[${signal}] Received. Starting graceful shutdown...`)
+  logger.info(`\n[${signal}] Received. Starting graceful shutdown...`)
 
   // Set a "Force Kill" timeout
   // If the API is down, we don't want the process to hang forever.
   const forceExit = setTimeout(() => {
-    console.error("[Shutdown] Timed out! Forcefully exiting.")
+    logger.error("[Shutdown] Timed out! Forcefully exiting.")
     process.exit(1)
   }, 10000) // 10 seconds
 
   // Stop accepting new connections
   server.close(() => {
-    console.log("[Shutdown] HTTP/WS server closed.")
+    logger.debug("[Shutdown] HTTP/WS server closed.")
   })
 
   try {
     // Persist data to the Backend
     if (rooms.size > 0) {
-      console.log(`[Shutdown] Persisting ${rooms.size} active rooms...`)
+      logger.info(`[Shutdown] Persisting ${rooms.size} active rooms...`)
       await persistAllRooms()
     }
 
-    console.log("[Shutdown] All data saved. Clean exit.")
+    await syncRedis.disconnect()
+
+    logger.debug("[Shutdown] All data saved. Clean exit.")
     clearTimeout(forceExit)
     process.exit(0)
   } catch (err) {
-    console.error("[Shutdown] Error during cleanup:", err)
+    logger.error({ error: err }, "[Shutdown] Error during cleanup:")
     process.exit(1)
   }
 }

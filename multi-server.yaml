@@ -1,0 +1,31 @@
+services:
+  node-server:
+    build: .
+    # Do not map ports here to avoid conflicts on localhost. 
+    # Nginx will communicate via the internal Docker network.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # tells docker to load the file
+    env_file:
+      - .env.production
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - SERVER_ID=Node-Instance
+      - REDIS_ADDRESS=redis://redis-cache:6379
+    deploy:
+      replicas: 3
+    depends_on:
+      - redis-cache
+
+  loadbalancer:
+    image: nginx:alpine
+    volumes:
+      - ./load-balancer.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "9000:80"
+    depends_on:
+      - node-server
+  
+  redis-cache:
+    image: redis:alpine

@@ -1,12 +1,12 @@
 import { logger } from "./logger.js"
 import { createServer, Server } from "node:http"
 import { WebSocketServer } from "ws"
-import * as Y from "yjs"
 
 import { normalizeRoomFromUrl, config } from "./config.js"
 import {
   cleanupConn,
   createConn,
+  getLatestDocState,
   getOrCreateRoom,
   rooms,
   setupRoomDestroyer,
@@ -16,6 +16,7 @@ import { handleIncoming, sendAwareness, sendSyncStep1 } from "./yjsProtocol.js"
 import { postDocumentSnapshot } from "./internalApi.js"
 import { handleInternalAPI } from "./apiHandlers.js"
 import { Conn, Room } from "./types.js"
+import { syncRedis } from "./redis.js"
 
 /**
  * Boot the HTTP + WebSocket server.
@@ -88,12 +89,6 @@ export function startServer(): Server {
         logger.debug({ roomName }, "Creating connection")
         const conn = await createConn(ws, roomName, authToken)
 
-        if (conn.userId === "") {
-          logger.warn({ roomName }, "Connection rejected: empty userId after auth")
-          ws.close(4001, "Unauthorized")
-          return
-        }
-
         room.conns.add(conn)
         logger.info(
           { roomName, userId: conn.userId, userRole: conn.userRole, connId: conn.id },
@@ -101,6 +96,9 @@ export function startServer(): Server {
         )
 
         room.awareness.setLocalStateField("connectionId", conn.id)
+
+        // subscribe to room channel
+        syncRedis.subscribeRoom(room)
 
         // Handle the Sync Handshake
         const startSync = () => {
@@ -196,8 +194,7 @@ export async function persistAllRooms() {
     try {
       logger.debug({ roomName: room.name }, "Saving room state")
       const docId = room.name.replace("doc-", "")
-      const stateUpdate = Y.encodeStateAsUpdate(room.doc)
-      const binary = Buffer.from(stateUpdate)
+      const binary = getLatestDocState(room)
 
       await postDocumentSnapshot(docId, binary)
       logger.debug({ roomName: room.name, size: binary.length }, "Room state saved successfully")

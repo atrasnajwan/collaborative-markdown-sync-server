@@ -6,13 +6,14 @@ import type { WebSocket } from "ws"
 
 import { config } from "./config.js"
 import { forwardUpdate, forwardUpdateNow } from "./forwarding.js"
-import { broadcastAwarenessUpdate, broadcastDocUpdate } from "./yjsProtocol.js"
+import { broadcastAwarenessUpdate, broadcastDocUpdate, isOpen } from "./yjsProtocol.js"
 import { UserRole, type Conn, type Room, type RoomName } from "./types.js"
 import { verifyAuthToken } from "./auth.js"
 import { hydrateRoomFromBackend } from "./persistence.js"
 import { fetchUserRole } from "./internalApi.js"
 import EventEmitter from "node:events"
 import { logger } from "./logger.js"
+import { syncRedis } from "./redis.js"
 
 /**
  * In‑memory registry of all active rooms
@@ -67,6 +68,13 @@ export function getOrCreateRoom(name: RoomName): Room {
 
 function setupDocListeners(room: Room) {
   room.doc.on("update", (update: Uint8Array, origin: unknown) => {
+    if (origin === "redis") {
+      logger.trace({ roomName: room.name }, "Applying authorized update from Redis")
+      // We only broadcast to LOCAL users connected to this server
+      broadcastDocUpdate(room, update, origin)
+      return // Stop here so we don't re-publish to Redis
+    }
+
     // get origin connection
     let originConn: Conn | undefined
     if (origin && typeof origin === "object" && "send" in (origin as any)) {
@@ -92,7 +100,11 @@ function setupDocListeners(room: Room) {
       { roomName: room.name, updateSize: update.length, userId: originConn.userId },
       "Broadcasting document update",
     )
+
     broadcastDocUpdate(room, update, origin)
+
+    // publish update to redis
+    syncRedis.publishDoc(room.name, update)
 
     // skip forward update if it's not from origin
     if (!originConn) return
@@ -112,6 +124,13 @@ function setupAwarenessListeners(room: Room) {
       const changedClients = added.concat(updated, removed)
       if (changedClients.length === 0) return
 
+      if (origin === "redis") {
+        logger.trace({ roomName: room.name }, "[Awareness] Applying authorized update from Redis")
+        // We only broadcast to LOCAL users connected to this server
+        broadcastAwarenessUpdate(room, changedClients, origin)
+        return // Stop here so we don't re-publish to Redis
+      }
+
       logger.trace(
         {
           roomName: room.name,
@@ -122,6 +141,8 @@ function setupAwarenessListeners(room: Room) {
         "Broadcasting awareness update",
       )
       broadcastAwarenessUpdate(room, changedClients, origin)
+      // publish update to redis
+      syncRedis.publishAwareness(room, changedClients)
     },
   )
 }
@@ -142,23 +163,19 @@ export async function createConn(
   // a random 31‑bit integer for this WebSocket connection and reuse it
   // for the life of the connection.
   const awarenessClientId = (Math.random() * 0x7fffffff) | 0
-  let userId: string = ""
+  const docId = roomName.replace("doc-", "")
+  const authInfo = verifyAuthToken(authToken, ws)
+  const userId = authInfo.userId
+  logger.debug({ roomName, userId }, "Token verified")
+
   let userRole: UserRole = UserRole.None
-
   try {
-    const docId = roomName.replace("doc-", "")
-    const authInfo = verifyAuthToken(authToken)
-    userId = authInfo.userId
-    logger.debug({ roomName, userId }, "Token verified")
-
     const roleInfo = await fetchUserRole(docId, userId)
     userRole = roleInfo.role
     logger.debug({ roomName, userId, userRole }, "User role fetched")
   } catch (err) {
-    logger.warn({ roomName, error: err }, "Authentication or role fetch failed")
-    ws.send(JSON.stringify({ type: "auth-error" }), err => {
-      if (err) logger.error({ error: err, userId }, "Failed to notify client of auth error")
-    })
+    logger.warn({ roomName, error: err }, "Role fetch failed")
+    ws.close(4001, "Unauthorized")
   }
 
   const conn = {
@@ -210,7 +227,19 @@ export function setupRoomDestroyer() {
         if (room.forwardQueue.updates.length > 0) {
           const finalUpdate = Y.mergeUpdates(room.forwardQueue.updates)
           try {
-            await forwardUpdateNow(room, finalUpdate, room.forwardQueue.lastUserId)
+            // only one server should forward when multiple instances host the same
+            // document. use a redis-backed lock to ensure the request is sent once.
+            const locked = await syncRedis.acquireForwardLock(room.name)
+            if (locked) {
+              await forwardUpdateNow(room, finalUpdate, room.forwardQueue.lastUserId)
+              // release lock
+              await syncRedis.releaseForwardLock(room.name)
+            } else {
+              logger.trace(
+                { roomName: name },
+                "Skipping flush: another instance already forwarded update",
+              )
+            }
           } catch (err) {
             logger.error({ roomName: name, err }, "Final flush failed during destruction")
           }
@@ -218,7 +247,9 @@ export function setupRoomDestroyer() {
       }
 
       logger.info({ roomName: name, idleTime: now - room.lastActiveAt }, "Destroying idle room")
-      removeRoom(room, name)
+      // unsubscribe channel
+      syncRedis.unsubscribeRoom(room.name)
+      removeRoom(room)
       destroyedCount++
     }
 
@@ -228,8 +259,80 @@ export function setupRoomDestroyer() {
   }, config.ROOM_TTL_MS)
 }
 
-export function removeRoom(room: Room, name: string) {
-  logger.debug({ roomName: name }, "Removing room from memory")
+export function removeRoom(room: Room) {
+  logger.debug({ roomName: room.name }, "Removing room from memory")
   room.doc.destroy()
-  rooms.delete(name)
+  rooms.delete(room.name)
+}
+
+/**
+ * Delete room and notify all clients
+ */
+export async function handleDocumentDeleted(roomName: string): Promise<number> {
+  const room = rooms.get(roomName)
+  if (!room) return 0
+
+  const notificationPromises: Promise<void>[] = []
+  room.conns.forEach(conn => {
+    if (isOpen(conn.ws)) {
+      // kick client from room
+      const promise = new Promise<void>((resolve, reject) => {
+        conn.ws.send(JSON.stringify({ type: "document-deleted" }), err => {
+          if (err) return reject(err)
+          conn.ws.close(1008, "document deleted")
+          resolve()
+        })
+      })
+      notificationPromises.push(promise)
+    }
+  })
+  await Promise.all(notificationPromises)
+  removeRoom(room)
+  return notificationPromises.length
+}
+
+/**
+ * Notify client its role changed
+ */
+export async function handleUserRoleChanged(
+  roomName: string,
+  userId: string,
+  role: string,
+): Promise<number> {
+  const room = rooms.get(roomName)
+  if (!room) return 0
+
+  const notificationPromises: Promise<void>[] = []
+
+  room.conns.forEach(conn => {
+    if (conn.userId === String(userId)) {
+      conn.userRole = role as UserRole
+      if (isOpen(conn.ws)) {
+        // Create a promise for each WS notification
+        const promise = new Promise<void>((resolve, reject) => {
+          if (role === UserRole.None) {
+            // kick client from room
+            conn.ws.send(JSON.stringify({ type: "kicked" }), err => {
+              if (err) return reject(err)
+              conn.ws.close(1008, "No access")
+              resolve()
+            })
+          } else {
+            conn.ws.send(JSON.stringify({ type: "permission-changed", role }), err => {
+              if (err) return reject(err)
+              resolve()
+            })
+          }
+        })
+        notificationPromises.push(promise)
+      }
+    }
+  })
+  await Promise.all(notificationPromises)
+  return notificationPromises.length
+}
+
+export function getLatestDocState(room: Room): Buffer<ArrayBuffer> {
+  const stateUpdate = Y.encodeStateAsUpdate(room.doc)
+  return Buffer.from(stateUpdate)
 }
