@@ -30,9 +30,11 @@ WebSocket Yjs sync + awareness server that keeps a Y.Doc in memory per room and 
 - `ws://localhost:8787/` → room `"default"`.
 - Auth required: `ws://host:port/<room>?token=JWT_HERE`
 
-## Scalability (Redis pub/sub) — _not yet implemented_
+## Scalability
 
-Horizontal scaling is planned via **Redis pub/sub**: multiple server instances would share room state by subscribing to per-room channels and publishing document/awareness updates. Each instance would still hold an in-memory Y.Doc per room it serves; Redis would relay updates between instances so that clients connected to different nodes stay in sync. This section will be updated when the feature is implemented.
+The server supports **horizontal scaling** using Redis pub/sub. When `REDIS_ADDRESS` is set, each instance will connect to Redis and relay document and awareness updates through per-room channels. This allows clients attached to different nodes to stay in sync while each node continues to maintain its own in-memory copy of a room’s `Y.Doc`.
+
+Detailed design, configuration examples, and implementation notes are covered in the separate [Redis scaling guide](./REDIS-SCALING.md).
 
 ## Run (development)
 
@@ -49,6 +51,20 @@ pnpm run build
 pnpm start
 ```
 
+## Docker multi-instance test
+
+A helper `multi-server.yaml` compose file is included for exercising the Redis-based scaling logic locally. It launches three application replicas, an Nginx load‑balancer on port `9000`, and a Redis cache. 
+
+To try it out:
+```sh
+# from repo root
+docker compose -f multi-server.yaml up --build
+```
+
+Clients can then connect to ws://localhost:9000/<room> and you should see update events propagated across all three nodes.
+
+This configuration is for testing only; in a real deployment you would use a proper orchestration system (k8s, ECS, etc.) and our own load‑balancer.
+
 ## HTTP endpoints
 
 - Health: GET /healthz
@@ -64,6 +80,7 @@ pnpm start
 - BACKEND_API_SECRET — used by internal client requests to backend
 - INTERNAL_SECRET — required header for /internal/ requests
 - JWT_SECRET — used to verify client tokens
+- REDIS_ADDRESS — if set, enables Redis pub/sub for horizontally scaled deployments (see [Redis scaling guide](./REDIS-SCALING.md))
 - FORWARD_DEBOUNCE_MS — debounce merging updates before forwarding (default 0)
 - ROOM_TTL_MS — idle-room TTL in ms (default 600000)
 
