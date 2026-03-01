@@ -3,18 +3,21 @@ import { config } from "./config.js"
 import { logger } from "./logger.js"
 import * as Y from "yjs"
 import { Room } from "./types.js"
-import { decodeBase64ToUint8Array } from "./persistence.js"
 import * as awarenessProtocol from "y-protocols/awareness"
-import { handleDocumentDeleted, handleUserRoleChanged } from "./rooms.js"
+import { getLatestDocState, handleDocumentDeleted, handleUserRoleChanged } from "./rooms.js"
 
 class SyncRedis {
-  public pubClient: RedisClientType
-  public subClient: RedisClientType
+  public pubClient: RedisClientType | null = null
+  public subClient: RedisClientType | null = null
   private subscribedRooms = new Set<string>()
   public isEnabled: boolean = false
 
   constructor() {
     logger.debug({ addr: config.REDIS_ADDRESS }, "Init Redis")
+    if (!config.REDIS_ADDRESS) {
+      logger.info("Redis address not found. Running in Single-Server mode.")
+      return
+    }
     this.pubClient = createClient({
       url: config.REDIS_ADDRESS,
       socket: {
@@ -32,6 +35,8 @@ class SyncRedis {
   }
 
   public async connect() {
+    if (!this.pubClient || !this.subClient) return
+
     this.setHandlers()
     await Promise.all([await this.pubClient.connect(), await this.subClient.connect()])
     this.isEnabled = true
@@ -39,6 +44,8 @@ class SyncRedis {
   }
 
   private setHandlers() {
+    if (!this.pubClient || !this.subClient) return
+
     this.pubClient.on("error", err => logger.error({ error: err }, "Redis pubClient Error", err))
     this.subClient.on("error", err => logger.error({ error: err }, "Redis subClient Error", err))
     this.pubClient.on("connect", () => logger.debug("Redis pubClient connecting..."))
@@ -46,7 +53,8 @@ class SyncRedis {
   }
 
   public async disconnect() {
-    if (!this.isEnabled) return
+    if (!this.isEnabled || !this.pubClient || !this.subClient) return
+
     logger.info(`Disconnecting redis...`)
     await Promise.all([this.pubClient.quit(), this.subClient.quit()])
     logger.info("Redis disconnected")
@@ -54,6 +62,10 @@ class SyncRedis {
 
   private getDocChannel(roomName: string): string {
     return `sync:doc:${roomName}`
+  }
+
+  private getDocSnapshotChannel(roomName: string): string {
+    return `snapshot:doc:${roomName}`
   }
 
   private getAwarenessChannel(roomName: string): string {
@@ -70,16 +82,74 @@ class SyncRedis {
       this.subscribedRooms.add(room.name)
       this.subscribeDoc(room)
       this.subscribeAwareness(room)
+      this.subscribeSnapshotRequest(room)
       this.subscribeNotification(room)
     }
   }
+  public subscribeSnapshotRequest(room: Room) {
+    if (!this.subClient) return
+
+    const channel = this.getDocSnapshotChannel(room.name)
+    logger.debug({ channel }, "[Snapshot] Subscribe to channel")
+
+    this.subClient.subscribe(channel, async responseChannel => {
+      try {
+        logger.trace(
+          { responseChannel, roomName: room.name },
+          "[Snapshot] Processing published message",
+        )
+
+        const state = getLatestDocState(room)
+        if (this.pubClient) {
+          return await this.pubClient.publish(responseChannel, Buffer.from(state))
+        }
+      } catch (err) {
+        logger.error({ error: err }, "[Snapshot] Failed to apply update from redis")
+      }
+    })
+  }
+
+  public publishSnapshotRequest(roomName: string, responseChannel: string) {
+    if (!this.isEnabled || !this.pubClient) return
+    logger.trace({ roomName, responseChannel }, "[Snapshot] Publish to channel")
+    const channel = this.getDocSnapshotChannel(roomName)
+    this.pubClient.publish(channel, responseChannel)
+  }
+
+  // temporary channel to receive snapshot response from `snapshot:doc:${roomName}` channel
+  public subscribeSnapshotResponse(responseChannel: string): Promise<Buffer<ArrayBuffer>> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        if (this.subClient) {
+          this.subClient.unsubscribe(responseChannel)
+        }
+        reject(new Error("Timeout waiting for document owner"))
+      }, 5000)
+
+      if (!this.subClient) {
+        reject(new Error("SubClient not initialized"))
+        return
+      }
+
+      this.subClient.subscribe(responseChannel, (message: Buffer) => {
+        clearTimeout(timeout)
+        if (this.subClient) {
+          this.subClient.unsubscribe(responseChannel)
+        }
+        resolve(Buffer.from(message))
+      }, true) // set return as Buffer
+    })
+  }
+
   public subscribeDoc(room: Room) {
+    if (!this.subClient) return
+
     const channel = this.getDocChannel(room.name)
     logger.debug({ channel }, "[Document] Subscribe to channel")
 
-    this.subClient.subscribe(channel, message => {
+    this.subClient.subscribe(channel, (message: Buffer) => {
       try {
-        const update = decodeBase64ToUint8Array(message)
+        const update = new Uint8Array(message)
         logger.trace(
           { channel, messageLength: update.length },
           "[Document] Processing published message",
@@ -90,24 +160,27 @@ class SyncRedis {
       } catch (err) {
         logger.error({ error: err }, "[Document] Failed to apply update from redis")
       }
-    })
+    }, true) // set return as Buffer
   }
 
   public publishDoc(roomName: string, update: Uint8Array) {
-    if (!this.isEnabled) return
+    if (!this.isEnabled || !this.pubClient) return
+
     logger.trace({ roomName, messageLength: update.length }, "[Document] Publish to channel")
     const channel = this.getDocChannel(roomName)
-    const message = Buffer.from(update).toString("base64")
+    const message = Buffer.from(update)
     this.pubClient.publish(channel, message)
   }
 
   public subscribeAwareness(room: Room) {
+    if (!this.subClient) return
+
     const channel = this.getAwarenessChannel(room.name)
     logger.debug({ channel }, "[Awareness] Subscribe to channel")
 
-    this.subClient.subscribe(channel, message => {
+    this.subClient.subscribe(channel, (message: Buffer) => {
       try {
-        const update = decodeBase64ToUint8Array(message)
+        const update = new Uint8Array(message)
         logger.trace(
           { channel, messageLength: update.length },
           "[Awareness] Processing published message",
@@ -118,22 +191,25 @@ class SyncRedis {
       } catch (err) {
         logger.error({ error: err }, "[Awareness] Failed to apply update from redis")
       }
-    })
+    }, true) // set return as Buffer
   }
 
   public publishAwareness(room: Room, changedClients: number[]) {
-    if (!this.isEnabled) return
+    if (!this.isEnabled || !this.pubClient) return
+
     logger.trace(
       { roomName: room.name, messageLength: changedClients.length },
       "[Awareness] Publish to channel",
     )
     const channel = this.getAwarenessChannel(room.name)
     const update = awarenessProtocol.encodeAwarenessUpdate(room.awareness, changedClients)
-    const message = Buffer.from(update).toString("base64")
+    const message = Buffer.from(update)
     this.pubClient.publish(channel, message)
   }
 
   public subscribeNotification(room: Room) {
+    if (!this.subClient) return
+
     const channel = this.getNotificationChannel(room.name)
     logger.debug({ channel }, "[Notification] Subscribe to channel")
 
@@ -153,7 +229,7 @@ class SyncRedis {
   }
 
   public publishRoleChanged(roomName: string, userId: string, role: string) {
-    if (!this.isEnabled) return 0
+    if (!this.isEnabled || !this.pubClient) return 0
 
     logger.trace({ roomName, userId, role }, "[User Role] Publish to channel")
     const channel = this.getNotificationChannel(roomName)
@@ -162,7 +238,7 @@ class SyncRedis {
   }
 
   public publishDocumentDeleted(roomName: string) {
-    if (!this.isEnabled) return 0
+    if (!this.isEnabled || !this.pubClient) return 0
 
     logger.trace({ roomName }, "[Document Deleted] Publish to channel")
     const channel = this.getNotificationChannel(roomName)
@@ -171,18 +247,22 @@ class SyncRedis {
   }
 
   public unsubscribeRoom(roomName: string) {
-    if (!this.isEnabled) return
+    if (!this.isEnabled || !this.subClient) return
     const docChannel = this.getDocChannel(roomName)
     logger.debug({ channel: docChannel }, "[Document] Unsubscribe channel")
-    syncRedis.subClient.unsubscribe(docChannel)
+    this.subClient.unsubscribe(docChannel)
 
     const awarenessChannel = this.getAwarenessChannel(roomName)
     logger.debug({ channel: awarenessChannel }, "[Awareness] Unsubscribe channel")
-    syncRedis.subClient.unsubscribe(awarenessChannel)
+    this.subClient.unsubscribe(awarenessChannel)
+
+    const snapshotChannel = this.getDocSnapshotChannel(roomName)
+    logger.debug({ channel: snapshotChannel }, "[Snapshot] Unsubscribe channel")
+    this.subClient.unsubscribe(snapshotChannel)
 
     const notificationChannel = this.getNotificationChannel(roomName)
     logger.debug({ channel: notificationChannel }, "[Notification] Unsubscribe channel")
-    syncRedis.subClient.unsubscribe(notificationChannel)
+    this.subClient.unsubscribe(notificationChannel)
 
     this.subscribedRooms.delete(roomName)
   }

@@ -204,11 +204,6 @@ export function cleanupConn(room: Room, conn: Conn) {
   )
   awarenessProtocol.removeAwarenessStates(room.awareness, [conn.awarenessClientId], conn.ws)
   touchRoom(room)
-
-  if (room.conns.size === 0) {
-    // unsubscribe channel
-    syncRedis.unsubscribeRoom(room.name)
-  }
 }
 
 /**
@@ -240,6 +235,8 @@ export function setupRoomDestroyer() {
       }
 
       logger.info({ roomName: name, idleTime: now - room.lastActiveAt }, "Destroying idle room")
+      // unsubscribe channel
+      syncRedis.unsubscribeRoom(room.name)
       removeRoom(room)
       destroyedCount++
     }

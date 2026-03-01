@@ -4,6 +4,7 @@ import { config } from "./config.js"
 import { logger } from "./logger.js"
 import { getLatestDocState, handleDocumentDeleted, handleUserRoleChanged } from "./rooms.js"
 import { syncRedis } from "./redis.js"
+import { randomUUID } from "node:crypto"
 
 const sendJSON = (res: http.ServerResponse, status: number, data?: any) => {
   res.writeHead(status, { "Content-Type": "application/json" })
@@ -40,11 +41,18 @@ export async function handleInternalAPI(
   // GET /internal/documents/:id/state
   if (method === "GET" && action === "state") {
     try {
-      const room = rooms.get(roomName)
-      if (!room) return sendJSON(res, 404, { error: "Document not found" })
-
-      const binaryStr = getLatestDocState(room).toString("base64")
-      return sendJSON(res, 200, { binaryStr })
+      let binaryStr = ""
+      if (syncRedis.isEnabled) {
+        const responseChannel = `snapshot:response:${randomUUID()}`
+        syncRedis.publishSnapshotRequest(roomName, responseChannel)
+        binaryStr = (await syncRedis.subscribeSnapshotResponse(responseChannel)).toString("base64")
+      } else {
+        const room = rooms.get(roomName)
+        if (!room) return sendJSON(res, 404, { error: "Document not found" })
+        binaryStr = getLatestDocState(room).toString("base64")
+      }
+      logger.debug({ docId, binaryStr: binaryStr.length }, "Snapshot response")
+      return sendJSON(res, 200, { binary: binaryStr })
     } catch (err) {
       logger.error({ error: err, docId }, "Failed to fetch last document state")
       return sendJSON(res, 500, { error: "Failed to fetch last document state" })
