@@ -22,7 +22,9 @@
     "redis": "^5.11.0",
     "ws": "^8.18.0",
     "y-protocols": "^1.0.6",
-    "yjs": "^13.6.27"
+    "yjs": "^13.6.27",
+    "@grpc/grpc-js": "^1.10.11",
+    "@grpc/proto-loader": "^0.7.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

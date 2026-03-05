@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package internalpb;
+
+option go_package = "collaborative-markdown-editor/internal/grpc/internalpb";
+
+import "google/protobuf/empty.proto";
+
+message DocumentIDRequest {
+    uint64 id = 1;
+}
+
+message PermissionRequest {
+    uint64 doc_id = 1;
+    uint64 user_id = 2;
+}
+
+message PermissionResponse {
+    string role = 1;
+}
+
+message DocumentUpdate {
+    uint64 seq = 1;
+    bytes binary = 2;
+}
+
+message DocumentStateResponse {
+    bytes snapshot = 1;
+    uint64 snapshot_seq = 2;
+    repeated DocumentUpdate updates = 3;
+}
+
+message UpdateRequest {
+    uint64 doc_id = 1;
+    uint64 user_id = 2;
+    bytes update = 3;
+}
+
+message SnapshotRequest {
+    uint64 doc_id = 1;
+    bytes snapshot = 2;
+}
+
+service InternalService {
+    rpc GetUserRole(PermissionRequest) returns (PermissionResponse) {}
+    rpc GetDocumentState(DocumentIDRequest) returns (DocumentStateResponse) {}
+    rpc CreateUpdate(UpdateRequest) returns (google.protobuf.Empty) {}
+    rpc CreateSnapshot(SnapshotRequest) returns (google.protobuf.Empty) {}
+}

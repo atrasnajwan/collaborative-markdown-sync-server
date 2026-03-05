@@ -5,7 +5,7 @@
  * - Keeps Y.Doc and awareness in-memory per room
  * - Speaks Yjs sync + awareness protocols
  * - Broadcasts updates to peers in the room
- * - Forwards doc updates to API via HTTP POST
+ * - Forwards doc updates to backend via gRPC/API (see proto/internal.proto)
  */
 
 import { logger } from "./logger.js"

@@ -76,7 +76,8 @@ This configuration is for testing only; in a real deployment you would use a pro
 
 - PORT (default 8787)
 - HOST (default 0.0.0.0)
-- BACKEND_API_URL — if set, forwards updates to this URL
+- BACKEND_API_GRPC_ADDRESS — if set, address of backend gRPC service used for internal API calls (takes precedence over HTTP)
+- BACKEND_API_URL — legacy HTTP base URL; still supported when gRPC address is empty
 - BACKEND_API_SECRET — used by internal client requests to backend
 - INTERNAL_SECRET — required header for /internal/ requests
 - JWT_SECRET — used to verify client tokens
@@ -86,10 +87,16 @@ This configuration is for testing only; in a real deployment you would use a pro
 
 ## Backend payloads
 
-- When forwarding updates, the backend receives raw bytes (`application/octet-stream`) at:
-  - `POST /internal/documents/:id/update` (see [src/internalApi.ts](src/internalApi.ts))
-  - `POST /internal/documents/:id/snapshot` (snapshot on shutdown)
-- The internal API also exposes endpoints to read state and manage permissions (see [handleInternalAPI](src/apiHandlers.ts)).
+The internal API may be accessed either via gRPC or over HTTP.  When
+`BACKEND_API_GRPC_ADDRESS` is set the server will use the gRPC service defined in
+`proto/internal.proto`; otherwise it will fall back to the legacy HTTP endpoints
+on `BACKEND_API_URL` (`/internal/documents/...`).
+
+Client helper functions in [`src/internalApi.ts`](src/internalApi.ts) make this choice transparently, preferring gRPC but sending HTTP requests when no gRPC address is configured.  Raw Yjs updates and snapshots are still sent as byte
+buffers.
+
+> The HTTP endpoints remain available for backward compatibility 
+
 
 <br>
 
