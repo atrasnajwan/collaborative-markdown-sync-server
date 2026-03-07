@@ -67,7 +67,7 @@ function ensureGrpcClient(): any {
 
   // load proto definition dynamically. using URL relative to this file so it continues
   // to work after the project is compiled into `dist/`.
-  const PROTO_PATH = new URL("../proto/internal.proto", import.meta.url).pathname
+  const PROTO_PATH = new URL("../proto/client.proto", import.meta.url).pathname
   const packageDef = protoLoader.loadSync(PROTO_PATH, {
     keepCase: true,
     longs: String,
