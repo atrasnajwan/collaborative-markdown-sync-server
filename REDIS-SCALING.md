@@ -48,7 +48,7 @@ A `multi-server.yaml` compose file is checked into the repository for experiment
 
 ## Considerations
 
-- **Failure Modes**: if Redis is unavailable the server continues in single‑node mode (`isEnabled === false`) and clients connected only to that instance will  still work. Updates originating from another node will not be received until Redis reconnects.
+- **Failure Modes**: if Redis is unavailable the server continues in single‑node mode (`isEnabled === false`) and clients connected only to that instance will still work. Updates originating from another node will not be received until Redis reconnects.
 - **Performance**: message size is identical to the Yjs updates that would be broadcast over WebSocket; Redis is typically strong enough for thousands of
   ops per second, but monitor latency if you have heavy traffic.
 - **Security**: Redis authentication (ACLs/password) is managed via the connection string passed in `REDIS_ADDRESS`.

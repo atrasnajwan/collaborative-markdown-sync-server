@@ -53,9 +53,10 @@ pnpm start
 
 ## Docker multi-instance test
 
-A helper `multi-server.yaml` compose file is included for exercising the Redis-based scaling logic locally. It launches three application replicas, an Nginx load‑balancer on port `9000`, and a Redis cache. 
+A helper `multi-server.yaml` compose file is included for exercising the Redis-based scaling logic locally. It launches three application replicas, an Nginx load‑balancer on port `9000`, and a Redis cache.
 
 To try it out:
+
 ```sh
 # from repo root
 docker compose -f multi-server.yaml up --build
@@ -72,11 +73,21 @@ This configuration is for testing only; in a real deployment you would use a pro
   - Implemented by [handleInternalAPI](src/apiHandlers.ts)
   - Requires header `x-internal-secret` (see [config](src/config.ts))
 
+## gRPC access for internal API
+
+The same internal API exposed over HTTP can also be served via gRPC on a
+separate port. Set the `GRPC_PORT` environment variable to the
+port you want the server to listen on (e.g. `50051`). If the value is `0` or
+unset the gRPC service is disabled and only the HTTP endpoints will be
+available. Both transports may be enabled simultaneously for backward
+compatibility with existing callers.
+
 ## Environment variables (see [config](src/config.ts))
 
 - PORT (default 8787)
 - HOST (default 0.0.0.0)
-- BACKEND_API_URL — if set, forwards updates to this URL
+- BACKEND_API_GRPC_ADDRESS — if set, address of backend gRPC service used for internal API calls (takes precedence over HTTP)
+- BACKEND_API_URL — legacy HTTP base URL; still supported when gRPC address is empty
 - BACKEND_API_SECRET — used by internal client requests to backend
 - INTERNAL_SECRET — required header for /internal/ requests
 - JWT_SECRET — used to verify client tokens
@@ -86,10 +97,15 @@ This configuration is for testing only; in a real deployment you would use a pro
 
 ## Backend payloads
 
-- When forwarding updates, the backend receives raw bytes (`application/octet-stream`) at:
-  - `POST /internal/documents/:id/update` (see [src/internalApi.ts](src/internalApi.ts))
-  - `POST /internal/documents/:id/snapshot` (snapshot on shutdown)
-- The internal API also exposes endpoints to read state and manage permissions (see [handleInternalAPI](src/apiHandlers.ts)).
+The internal API may be accessed either via gRPC or over HTTP. When
+`BACKEND_API_GRPC_ADDRESS` is set the server will use the gRPC service defined in
+`proto/internal.proto`; otherwise it will fall back to the legacy HTTP endpoints
+on `BACKEND_API_URL` (`/internal/documents/...`).
+
+Client helper functions in [`src/internalApi.ts`](src/internalApi.ts) make this choice transparently, preferring gRPC but sending HTTP requests when no gRPC address is configured. Raw Yjs updates and snapshots are still sent as byte
+buffers.
+
+> The HTTP endpoints remain available for backward compatibility
 
 <br>
 

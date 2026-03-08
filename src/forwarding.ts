@@ -10,8 +10,8 @@ import { logger } from "./logger.js"
  * as a single batched update per room.
  */
 export async function forwardUpdate(room: Room, update: Uint8Array, conn: Conn) {
-  if (!config.BACKEND_API_URL) {
-    logger.trace({ roomName: room.name }, "Skipping forward: BACKEND_API_URL not configured")
+  if (!config.BACKEND_API_GRPC_ADDRESS && !config.BACKEND_API_URL) {
+    logger.trace({ roomName: room.name }, "Skipping forward: no backend address configured")
     return
   }
 

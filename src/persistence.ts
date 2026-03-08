@@ -9,7 +9,6 @@ export type DocumentUpdateDTO = {
 }
 
 export type DocumentState = {
-  title: string
   snapshot: string // base64
   snapshot_seq: number
   updates: DocumentUpdateDTO[]

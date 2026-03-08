@@ -60,6 +60,7 @@ export function getOrCreateRoom(name: RoomName): Room {
       room.emitter.emit("ready")
     })
     .catch(err => {
+      // TODO: send message to client if failed
       logger.error({ roomName: name, error: err }, "Room hydration failed")
     })
 

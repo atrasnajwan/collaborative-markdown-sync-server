@@ -131,13 +131,17 @@ class SyncRedis {
         return
       }
 
-      this.subClient.subscribe(responseChannel, (message: Buffer) => {
-        clearTimeout(timeout)
-        if (this.subClient) {
-          this.subClient.unsubscribe(responseChannel)
-        }
-        resolve(Buffer.from(message))
-      }, true) // set return as Buffer
+      this.subClient.subscribe(
+        responseChannel,
+        (message: Buffer) => {
+          clearTimeout(timeout)
+          if (this.subClient) {
+            this.subClient.unsubscribe(responseChannel)
+          }
+          resolve(Buffer.from(message))
+        },
+        true,
+      ) // set return as Buffer
     })
   }
 
@@ -147,20 +151,24 @@ class SyncRedis {
     const channel = this.getDocChannel(room.name)
     logger.debug({ channel }, "[Document] Subscribe to channel")
 
-    this.subClient.subscribe(channel, (message: Buffer) => {
-      try {
-        const update = new Uint8Array(message)
-        logger.trace(
-          { channel, messageLength: update.length },
-          "[Document] Processing published message",
-        )
-        // Apply the update to the local Yjs document
-        // We pass 'redis' as the origin to prevent the observer from re-publishing
-        Y.applyUpdate(room.doc, update, "redis")
-      } catch (err) {
-        logger.error({ error: err }, "[Document] Failed to apply update from redis")
-      }
-    }, true) // set return as Buffer
+    this.subClient.subscribe(
+      channel,
+      (message: Buffer) => {
+        try {
+          const update = new Uint8Array(message)
+          logger.trace(
+            { channel, messageLength: update.length },
+            "[Document] Processing published message",
+          )
+          // Apply the update to the local Yjs document
+          // We pass 'redis' as the origin to prevent the observer from re-publishing
+          Y.applyUpdate(room.doc, update, "redis")
+        } catch (err) {
+          logger.error({ error: err }, "[Document] Failed to apply update from redis")
+        }
+      },
+      true,
+    ) // set return as Buffer
   }
 
   public publishDoc(roomName: string, update: Uint8Array) {
@@ -178,20 +186,24 @@ class SyncRedis {
     const channel = this.getAwarenessChannel(room.name)
     logger.debug({ channel }, "[Awareness] Subscribe to channel")
 
-    this.subClient.subscribe(channel, (message: Buffer) => {
-      try {
-        const update = new Uint8Array(message)
-        logger.trace(
-          { channel, messageLength: update.length },
-          "[Awareness] Processing published message",
-        )
-        // Apply the update to the local Yjs awareness
-        // We pass 'redis' as the origin to prevent the observer from re-publishing
-        awarenessProtocol.applyAwarenessUpdate(room.awareness, update, "redis")
-      } catch (err) {
-        logger.error({ error: err }, "[Awareness] Failed to apply update from redis")
-      }
-    }, true) // set return as Buffer
+    this.subClient.subscribe(
+      channel,
+      (message: Buffer) => {
+        try {
+          const update = new Uint8Array(message)
+          logger.trace(
+            { channel, messageLength: update.length },
+            "[Awareness] Processing published message",
+          )
+          // Apply the update to the local Yjs awareness
+          // We pass 'redis' as the origin to prevent the observer from re-publishing
+          awarenessProtocol.applyAwarenessUpdate(room.awareness, update, "redis")
+        } catch (err) {
+          logger.error({ error: err }, "[Awareness] Failed to apply update from redis")
+        }
+      },
+      true,
+    ) // set return as Buffer
   }
 
   public publishAwareness(room: Room, changedClients: number[]) {
