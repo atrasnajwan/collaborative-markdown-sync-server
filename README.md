@@ -53,9 +53,10 @@ pnpm start
 
 ## Docker multi-instance test
 
-A helper `multi-server.yaml` compose file is included for exercising the Redis-based scaling logic locally. It launches three application replicas, an Nginx load‑balancer on port `9000`, and a Redis cache. 
+A helper `multi-server.yaml` compose file is included for exercising the Redis-based scaling logic locally. It launches three application replicas, an Nginx load‑balancer on port `9000`, and a Redis cache.
 
 To try it out:
+
 ```sh
 # from repo root
 docker compose -f multi-server.yaml up --build
@@ -72,6 +73,15 @@ This configuration is for testing only; in a real deployment you would use a pro
   - Implemented by [handleInternalAPI](src/apiHandlers.ts)
   - Requires header `x-internal-secret` (see [config](src/config.ts))
 
+## gRPC access for internal API
+
+The same internal API exposed over HTTP can also be served via gRPC on a
+separate port. Set the `GRPC_PORT` environment variable to the
+port you want the server to listen on (e.g. `50051`). If the value is `0` or
+unset the gRPC service is disabled and only the HTTP endpoints will be
+available. Both transports may be enabled simultaneously for backward
+compatibility with existing callers.
+
 ## Environment variables (see [config](src/config.ts))
 
 - PORT (default 8787)
@@ -87,16 +97,15 @@ This configuration is for testing only; in a real deployment you would use a pro
 
 ## Backend payloads
 
-The internal API may be accessed either via gRPC or over HTTP.  When
+The internal API may be accessed either via gRPC or over HTTP. When
 `BACKEND_API_GRPC_ADDRESS` is set the server will use the gRPC service defined in
 `proto/internal.proto`; otherwise it will fall back to the legacy HTTP endpoints
 on `BACKEND_API_URL` (`/internal/documents/...`).
 
-Client helper functions in [`src/internalApi.ts`](src/internalApi.ts) make this choice transparently, preferring gRPC but sending HTTP requests when no gRPC address is configured.  Raw Yjs updates and snapshots are still sent as byte
+Client helper functions in [`src/internalApi.ts`](src/internalApi.ts) make this choice transparently, preferring gRPC but sending HTTP requests when no gRPC address is configured. Raw Yjs updates and snapshots are still sent as byte
 buffers.
 
-> The HTTP endpoints remain available for backward compatibility 
-
+> The HTTP endpoints remain available for backward compatibility
 
 <br>
 

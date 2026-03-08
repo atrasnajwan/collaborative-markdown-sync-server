@@ -8,10 +8,12 @@
  * - Forwards doc updates to backend via gRPC/API (see proto/internal.proto)
  */
 
+import { startInternalGrpcServer } from "./internalGrpcServer.js"
 import { logger } from "./logger.js"
 import { syncRedis } from "./redis.js"
 import { rooms } from "./rooms.js"
 import { persistAllRooms, startServer } from "./server.js"
+import grpc from "@grpc/grpc-js"
 
 try {
   logger.info("Connecting redis...")
@@ -22,6 +24,14 @@ try {
 }
 
 const server = startServer()
+
+// spin up gRPC server for internal API
+let grpcServer: grpc.Server | null = null
+try {
+  grpcServer = startInternalGrpcServer()
+} catch (err) {
+  logger.error({ error: err }, "failed to start internal gRPC server")
+}
 
 let isShuttingDown = false
 
@@ -35,6 +45,7 @@ async function gracefulShutdown(signal: string) {
   // If the API is down, we don't want the process to hang forever.
   const forceExit = setTimeout(() => {
     logger.error("[Shutdown] Timed out! Forcefully exiting.")
+    if (grpcServer) grpcServer.forceShutdown()
     process.exit(1)
   }, 10000) // 10 seconds
 
@@ -51,7 +62,14 @@ async function gracefulShutdown(signal: string) {
     }
 
     await syncRedis.disconnect()
-
+    if (grpcServer) {
+      await new Promise<void>(resolve => {
+        grpcServer.tryShutdown(() => {
+          logger.info(`[Shutdown] gRPC server gracefully shut down.`)
+          resolve()
+        })
+      })
+    }
     logger.debug("[Shutdown] All data saved. Clean exit.")
     clearTimeout(forceExit)
     process.exit(0)

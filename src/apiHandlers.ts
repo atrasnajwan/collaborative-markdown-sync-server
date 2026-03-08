@@ -6,8 +6,15 @@ import { getLatestDocState, handleDocumentDeleted, handleUserRoleChanged } from 
 import { syncRedis } from "./redis.js"
 import { randomUUID } from "node:crypto"
 
-const sendJSON = (res: http.ServerResponse, status: number, data?: any, isBinary: boolean = false) => {
-  res.writeHead(status, { "Content-Type": isBinary ? "application/octet-stream" : "application/json" })
+const sendJSON = (
+  res: http.ServerResponse,
+  status: number,
+  data?: any,
+  isBinary: boolean = false,
+) => {
+  res.writeHead(status, {
+    "Content-Type": isBinary ? "application/octet-stream" : "application/json",
+  })
   res.end(data ? (isBinary ? data : JSON.stringify(data)) : null)
 }
 
@@ -19,15 +26,9 @@ const getBody = (req: http.IncomingMessage): Promise<string> => {
   })
 }
 
-
-// helper functions used by both HTTP and gRPC servers
-
 export class DocumentNotFoundError extends Error {}
 
-export async function fetchRoomState(
-  docId: string,
-  rooms: Map<string, Room>,
-): Promise<Buffer> {
+export async function fetchRoomState(docId: string, rooms: Map<string, Room>): Promise<Buffer> {
   const roomName = `doc-${docId}`
   try {
     let binary = null
@@ -48,9 +49,7 @@ export async function fetchRoomState(
   }
 }
 
-export async function deleteDocument(
-  docId: string,
-): Promise<number> {
+export async function deleteDocument(docId: string): Promise<number> {
   const roomName = `doc-${docId}`
   if (syncRedis.isEnabled) {
     return syncRedis.publishDocumentDeleted(roomName)

@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package syncserver;
+
+import "google/protobuf/empty.proto";
+
+message DocumentIDRequest {
+    uint64 id = 1;
+}
+
+message DocumentStateResponse {
+    bytes state = 1;
+}
+
+message DocumentUpdate {
+    uint64 seq = 1;
+    bytes binary = 2;
+}
+
+message PermissionChangedRequest {
+    uint64 doc_id = 1;
+    uint64 user_id = 2;
+    string role = 3;
+}
+
+service SyncServerInternal {
+    rpc GetState(DocumentIDRequest) returns (DocumentStateResponse) {}
+    rpc DeleteDocument(DocumentIDRequest) returns (google.protobuf.Empty) {}
+    rpc PermissionChanged(PermissionChangedRequest) returns (google.protobuf.Empty) {}
+}

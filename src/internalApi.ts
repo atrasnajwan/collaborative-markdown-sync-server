@@ -3,7 +3,6 @@ import { UserRole } from "./types.js"
 import grpc, { GrpcObject } from "@grpc/grpc-js"
 import protoLoader from "@grpc/proto-loader"
 
-
 export type DocumentUpdateDTO = {
   seq: number
   binary: string // base64-encoded bytes
