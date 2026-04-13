@@ -1,20 +1,18 @@
 import * as Y from "yjs"
+import { randomUUID } from "node:crypto"
 import { config } from "./config.js"
 import type { Conn, Room } from "./types.js"
 import { postDocumentUpdate } from "./internalApi.js"
 import { logger } from "./logger.js"
+import { kafkaService } from "./services/kafka.js"
+import { KafkaDocMessage } from "./services/types.js"
 
 /**
- * Forward each Yjs document update to the backend API.
+ * Forward each Yjs document update to the message queue.
  * When `FORWARD_DEBOUNCE_MS` is > 0, multiple updates are merged and sent
  * as a single batched update per room.
  */
 export async function forwardUpdate(room: Room, update: Uint8Array, conn: Conn) {
-  if (!config.BACKEND_API_GRPC_ADDRESS && !config.BACKEND_API_URL) {
-    logger.trace({ roomName: room.name }, "Skipping forward: no backend address configured")
-    return
-  }
-
   if (config.FORWARD_DEBOUNCE_MS <= 0) {
     logger.trace(
       { roomName: room.name, updateSize: update.length },
@@ -78,7 +76,21 @@ export async function forwardUpdateNow(
   )
 
   try {
-    await postDocumentUpdate(docId, update, userId)
+    const event: KafkaDocMessage = {
+      event_id: randomUUID(),
+      type: "document.updated",
+      document_id: Number(docId),
+      user_id: Number(userId),
+      timestamp: Date.now(),
+      data: Buffer.from(update).toString("base64"),
+    }
+
+    await kafkaService.sendMessage("document.sync", [
+      {
+        key: docId,
+        value: JSON.stringify(event),
+      },
+    ])
     logger.trace({ roomName: room.name, docId }, "Update forwarded successfully")
   } catch (err) {
     logger.error({ roomName: room.name, docId, error: err }, "Failed to forward update to backend")
