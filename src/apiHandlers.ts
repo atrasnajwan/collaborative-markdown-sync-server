@@ -5,6 +5,8 @@ import { logger } from "./logger.js"
 import { getLatestDocState, handleDocumentDeleted, handleUserRoleChanged } from "./rooms.js"
 import { syncRedis } from "./redis.js"
 import { randomUUID } from "node:crypto"
+import { KafkaDocMessage } from "./services/types.js"
+import { kafkaService } from "./services/kafka.js"
 
 const sendJSON = (
   res: http.ServerResponse,
@@ -26,9 +28,9 @@ const getBody = (req: http.IncomingMessage): Promise<string> => {
   })
 }
 
-export class DocumentNotFoundError extends Error {}
+export class DocumentNotFoundError extends Error { }
 
-export async function fetchRoomState(docId: string, rooms: Map<string, Room>): Promise<Buffer> {
+export async function fetchRoomState(docId: string, rooms: Map<string, Room>): Promise<void> {
   const roomName = `doc-${docId}`
   try {
     let binary = null
@@ -41,8 +43,22 @@ export async function fetchRoomState(docId: string, rooms: Map<string, Room>): P
       if (!room) throw new DocumentNotFoundError("Document not found")
       binary = getLatestDocState(room)
     }
+    // push message to kafka
+    const event: KafkaDocMessage = {
+      event_id: randomUUID(),
+      type: "document.snapshot",
+      document_id: Number(docId),
+      timestamp: Date.now(),
+      data: Buffer.from(binary).toString("base64"),
+    }
+
     logger.debug({ docId, binary: binary.length }, "Snapshot response")
-    return binary
+    return kafkaService.sendMessage("document.sync", [
+      {
+        key: docId,
+        value: JSON.stringify(event),
+      },
+    ])
   } catch (err) {
     logger.error({ error: err, docId }, "Failed to fetch last document state")
     throw err
@@ -89,11 +105,11 @@ export async function handleInternalAPI(
   const docId = parts[3]
   const action = parts[4]
 
-  // GET /internal/documents/:id/state
-  if (method === "GET" && action === "state") {
+  // POST /internal/documents/:id/snapshot
+  if (method === "POST" && action === "snapshot") {
     try {
-      const binary = await fetchRoomState(docId, rooms)
-      return sendJSON(res, 200, binary, true)
+      await fetchRoomState(docId, rooms)
+      return sendJSON(res, 204)
     } catch (err) {
       if ((err as any).message === "Document not found") {
         return sendJSON(res, 404, { error: "Document not found" })

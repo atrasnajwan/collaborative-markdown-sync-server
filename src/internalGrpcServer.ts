@@ -42,24 +42,24 @@ export function startInternalGrpcServer(): grpc.Server | null {
   const server = new grpc.Server()
 
   server.addService(SyncServerInternal.service, {
-    async GetState(call: grpc.ServerUnaryCall<any, any>, callback: grpc.sendUnaryData<any>) {
+    async PostSnapshot(call: grpc.ServerUnaryCall<any, any>, callback: grpc.sendUnaryData<any>) {
       if (!authenticate(call)) {
         return callback({ code: grpc.status.PERMISSION_DENIED, message: "unauthorized" })
       }
 
       const docId = String(call.request.id || "")
       try {
-        logger.debug("fetchRoomState called via gRPC")
-        const binary = await fetchRoomState(docId, rooms)
-        callback(null, { state: binary })
+        logger.debug("PostSnapshot called via gRPC")
+        await fetchRoomState(docId, rooms)
+        callback(null)
       } catch (err: any) {
         // prefer checking for the dedicated error class
         if (err instanceof DocumentNotFoundError) {
           return callback({ code: grpc.status.NOT_FOUND, message: "document not found" })
         }
         const msg = err && typeof err.message === "string" ? err.message : String(err)
-        logger.debug({ errMessage: msg }, "GetState catch message")
-        logger.error({ error: err, docId }, "GetState gRPC handler error")
+        logger.debug({ errMessage: msg }, "PostSnapshot catch message")
+        logger.error({ error: err, docId }, "PostSnapshot gRPC handler error")
         return callback({ code: grpc.status.INTERNAL, message: "internal error" })
       }
     },
