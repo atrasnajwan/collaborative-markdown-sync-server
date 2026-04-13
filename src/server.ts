@@ -13,10 +13,12 @@ import {
   touchRoom,
 } from "./rooms.js"
 import { handleIncoming, sendAwareness, sendSyncStep1 } from "./yjsProtocol.js"
-import { postDocumentSnapshot } from "./internalApi.js"
 import { handleInternalAPI } from "./apiHandlers.js"
 import { Conn, Room } from "./types.js"
 import { syncRedis } from "./redis.js"
+import { KafkaDocMessage } from "./services/types.js"
+import { randomUUID } from "node:crypto"
+import { kafkaService } from "./services/kafka.js"
 
 /**
  * Boot the HTTP + WebSocket server.
@@ -196,7 +198,21 @@ export async function persistAllRooms() {
       const docId = room.name.replace("doc-", "")
       const binary = getLatestDocState(room)
 
-      await postDocumentSnapshot(docId, binary)
+      const event: KafkaDocMessage = {
+        event_id: randomUUID(),
+        type: "document.snapshot",
+        document_id: Number(docId),
+        timestamp: Date.now(),
+        data: Buffer.from(binary).toString("base64"),
+      }
+
+      await kafkaService.sendMessage("document.sync", [
+        {
+          key: docId,
+          value: JSON.stringify(event),
+        },
+      ])
+
       logger.debug({ roomName: room.name, size: binary.length }, "Room state saved successfully")
     } catch (e) {
       logger.error({ roomName: room.name, error: e }, "Failed to save room state")
@@ -205,3 +221,4 @@ export async function persistAllRooms() {
   await Promise.all(promises)
   logger.info("Room persistence complete")
 }
+
