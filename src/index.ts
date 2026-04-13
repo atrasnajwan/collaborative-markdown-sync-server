@@ -9,6 +9,7 @@
  */
 
 import { startInternalGrpcServer } from "./internalGrpcServer.js"
+import { kafkaService } from "./services/kafka.js"
 import { logger } from "./logger.js"
 import { syncRedis } from "./redis.js"
 import { rooms } from "./rooms.js"
@@ -23,6 +24,14 @@ try {
   logger.info("Running in Single-Server mode.")
 }
 
+
+try {
+  logger.info("Starting Kafka...")
+  await kafkaService.start()
+} catch (err){
+  logger.error({ error: err }, "Error during starting kafka")
+  process.exit(0)
+}
 const server = startServer()
 
 // spin up gRPC server for internal API
@@ -60,8 +69,12 @@ async function gracefulShutdown(signal: string) {
       logger.info(`[Shutdown] Persisting ${rooms.size} active rooms...`)
       await persistAllRooms()
     }
-
+    
+    // disconnect redis
     await syncRedis.disconnect()
+    logger.info(`[Shutdown] Redis disconnected`)
+    
+    // shutdown gRPC
     if (grpcServer) {
       await new Promise<void>(resolve => {
         grpcServer.tryShutdown(() => {
@@ -70,6 +83,9 @@ async function gracefulShutdown(signal: string) {
         })
       })
     }
+    // shutdown kafka
+    await kafkaService.shutdown()
+    logger.info(`[Shutdown] Kafka is gracefully shut down.`)
     logger.debug("[Shutdown] All data saved. Clean exit.")
     clearTimeout(forceExit)
     process.exit(0)
