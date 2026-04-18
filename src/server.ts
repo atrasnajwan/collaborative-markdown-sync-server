@@ -1,24 +1,19 @@
-import { logger } from "./logger.js"
+import { logger } from "./services/logger.js"
 import { createServer, Server } from "node:http"
 import { WebSocketServer } from "ws"
 
-import { normalizeRoomFromUrl, config } from "./config.js"
+import { normalizeRoomFromUrl, config } from "./config/config.js"
 import {
   cleanupConn,
   createConn,
-  getLatestDocState,
   getOrCreateRoom,
   rooms,
   setupRoomDestroyer,
   touchRoom,
-} from "./rooms.js"
-import { handleIncoming, sendAwareness, sendSyncStep1 } from "./yjsProtocol.js"
-import { handleInternalAPI } from "./apiHandlers.js"
-import { Conn, Room } from "./types.js"
-import { syncRedis } from "./redis.js"
-import { KafkaDocMessage } from "./services/types.js"
-import { randomUUID } from "node:crypto"
-import { kafkaService } from "./services/kafka.js"
+} from "./core/rooms.js"
+import { handleOnMessage, sendAwareness, sendSyncStep1 } from "./core/yjsProtocol.js"
+import { handleInternalAPI } from "./api/handlers.js"
+import { syncRedis } from "./services/redis.js"
 
 /**
  * Boot the HTTP + WebSocket server.
@@ -168,57 +163,3 @@ export function startServer(): Server {
 
   return httpServer
 }
-
-function handleOnMessage(data: any, isBinary: boolean, room: Room, roomName: string, conn: Conn) {
-  if (!isBinary) {
-    logger.debug({ roomName, connId: conn.id }, "Received non-binary message, ignoring")
-    return
-  }
-
-  const messageData: Uint8Array =
-    data instanceof ArrayBuffer
-      ? new Uint8Array(data)
-      : Array.isArray(data)
-        ? new Uint8Array(Buffer.concat(data))
-        : new Uint8Array(data as Buffer)
-
-  logger.trace(
-    { roomName, connId: conn.id, dataSize: messageData.length },
-    "Processing incoming message",
-  )
-  touchRoom(room)
-  handleIncoming(room, conn, messageData)
-}
-
-export async function persistAllRooms() {
-  logger.info({ roomCount: rooms.size }, "Starting room persistence")
-  const promises = Array.from(rooms.values()).map(async room => {
-    try {
-      logger.debug({ roomName: room.name }, "Saving room state")
-      const docId = room.name.replace("doc-", "")
-      const binary = getLatestDocState(room)
-
-      const event: KafkaDocMessage = {
-        event_id: randomUUID(),
-        type: "document.snapshot",
-        document_id: Number(docId),
-        timestamp: Date.now(),
-        data: Buffer.from(binary).toString("base64"),
-      }
-
-      await kafkaService.sendMessage("document.events", [
-        {
-          key: docId,
-          value: JSON.stringify(event),
-        },
-      ])
-
-      logger.debug({ roomName: room.name, size: binary.length }, "Room state saved successfully")
-    } catch (e) {
-      logger.error({ roomName: room.name, error: e }, "Failed to save room state")
-    }
-  })
-  await Promise.all(promises)
-  logger.info("Room persistence complete")
-}
-

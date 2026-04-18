@@ -1,12 +1,11 @@
 import http from "http"
-import { Room } from "./types.js"
-import { config } from "./config.js"
-import { logger } from "./logger.js"
-import { getLatestDocState, handleDocumentDeleted, handleUserRoleChanged } from "./rooms.js"
-import { syncRedis } from "./redis.js"
-import { randomUUID } from "node:crypto"
-import { KafkaDocMessage } from "./services/types.js"
-import { kafkaService } from "./services/kafka.js"
+import { Room } from "../types/room.js"
+import { logger } from "../services/logger.js"
+import { syncRedis } from "../services/redis.js"
+import { authenticateApiCall } from "../core/auth.js"
+import { handleDocumentDeleted } from "../core/documents.js"
+import { handleUserRoleChanged } from "../core/users.js"
+import { fetchRoomState } from "../core/rooms.js"
 
 const sendJSON = (
   res: http.ServerResponse,
@@ -26,43 +25,6 @@ const getBody = (req: http.IncomingMessage): Promise<string> => {
     req.on("data", chunk => (body += chunk))
     req.on("end", () => resolve(body))
   })
-}
-
-export class DocumentNotFoundError extends Error { }
-
-export async function fetchRoomState(docId: string, rooms: Map<string, Room>): Promise<void> {
-  const roomName = `doc-${docId}`
-  try {
-    let binary = null
-    if (syncRedis.isEnabled) {
-      const responseChannel = `snapshot:response:${randomUUID()}`
-      syncRedis.publishSnapshotRequest(roomName, responseChannel)
-      binary = await syncRedis.subscribeSnapshotResponse(responseChannel)
-    } else {
-      const room = rooms.get(roomName)
-      if (!room) throw new DocumentNotFoundError("Document not found")
-      binary = getLatestDocState(room)
-    }
-    // push message to kafka
-    const event: KafkaDocMessage = {
-      event_id: randomUUID(),
-      type: "document.snapshot",
-      document_id: Number(docId),
-      timestamp: Date.now(),
-      data: Buffer.from(binary).toString("base64"),
-    }
-
-    logger.debug({ docId, binary: binary.length }, "Snapshot response")
-    return kafkaService.sendMessage("document.events", [
-      {
-        key: docId,
-        value: JSON.stringify(event),
-      },
-    ])
-  } catch (err) {
-    logger.error({ error: err, docId }, "Failed to fetch last document state")
-    throw err
-  }
 }
 
 export async function deleteDocument(docId: string): Promise<number> {
@@ -96,7 +58,7 @@ export async function handleInternalAPI(
   if (!url) return
 
   // Auth
-  if (req.headers["x-internal-secret"] !== config.INTERNAL_SECRET) {
+  if (!authenticateApiCall(req.headers)) {
     res.writeHead(403)
     return res.end()
   }

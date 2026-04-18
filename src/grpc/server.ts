@@ -1,18 +1,12 @@
 import grpc from "@grpc/grpc-js"
 import protoLoader from "@grpc/proto-loader"
 
-import { config } from "./config.js"
-import { rooms } from "./rooms.js"
-import {
-  fetchRoomState,
-  deleteDocument,
-  changeUserPermission,
-  DocumentNotFoundError,
-} from "./apiHandlers.js"
-import { logger } from "./logger.js"
-
-// gRPC metadata key for authentication
-const INTERNAL_SECRET_KEY = "x-internal-secret"
+import { config } from "../config/config.js"
+import { fetchRoomState, rooms } from "../core/rooms.js"
+import { deleteDocument, changeUserPermission } from "../api/handlers.js"
+import { logger } from "../services/logger.js"
+import { authenticateGrpcCall } from "../core/auth.js"
+import { DocumentNotFoundError } from "../core/documents.js"
 
 const PROTO_PATH = new URL("../proto/server.proto", import.meta.url).pathname
 const packageDef = protoLoader.loadSync(PROTO_PATH, {
@@ -27,13 +21,7 @@ const grpcObj: any = grpc.loadPackageDefinition(packageDef)
 
 const SyncServerInternal = grpcObj.syncserver.SyncServerInternal as grpc.ServiceClientConstructor
 
-function authenticate(call: grpc.ServerUnaryCall<any, any>): boolean {
-  const metadata = call.metadata.get(INTERNAL_SECRET_KEY)
-  if (metadata.length === 0) return false
-  return String(metadata[0]) === config.INTERNAL_SECRET
-}
-
-export function startInternalGrpcServer(): grpc.Server | null {
+export function startGrpcServer(): grpc.Server | null {
   if (!config.GRPC_PORT) {
     logger.debug("gRPC internal API disabled (no port configured)")
     return null
@@ -43,7 +31,7 @@ export function startInternalGrpcServer(): grpc.Server | null {
 
   server.addService(SyncServerInternal.service, {
     async PostSnapshot(call: grpc.ServerUnaryCall<any, any>, callback: grpc.sendUnaryData<any>) {
-      if (!authenticate(call)) {
+      if (!authenticateGrpcCall(call)) {
         return callback({ code: grpc.status.PERMISSION_DENIED, message: "unauthorized" })
       }
 
@@ -65,7 +53,7 @@ export function startInternalGrpcServer(): grpc.Server | null {
     },
 
     async DeleteDocument(call: grpc.ServerUnaryCall<any, any>, callback: grpc.sendUnaryData<any>) {
-      if (!authenticate(call)) {
+      if (!authenticateGrpcCall(call)) {
         return callback({ code: grpc.status.PERMISSION_DENIED, message: "unauthorized" })
       }
 
@@ -84,7 +72,7 @@ export function startInternalGrpcServer(): grpc.Server | null {
       call: grpc.ServerUnaryCall<any, any>,
       callback: grpc.sendUnaryData<any>,
     ) {
-      if (!authenticate(call)) {
+      if (!authenticateGrpcCall(call)) {
         return callback({ code: grpc.status.PERMISSION_DENIED, message: "unauthorized" })
       }
 

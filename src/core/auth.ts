@@ -1,7 +1,9 @@
+import http from "http"
 import jwt, { type JwtPayload } from "jsonwebtoken"
-import { config } from "./config.js"
-import { logger } from "./logger.js"
+import { config } from "../config/config.js"
+import { logger } from "../services/logger.js"
 import type { WebSocket } from "ws"
+import grpc from "@grpc/grpc-js"
 
 export type AuthInfo = {
   userId: string
@@ -11,7 +13,7 @@ export type AuthInfo = {
  * Verify a JWT
  * and extract the user id.
  */
-export function verifyAuthToken(token: string, ws: WebSocket): AuthInfo {
+export function verifyClientAuthToken(token: string, ws: WebSocket): AuthInfo {
   try {
     const decoded = jwt.verify(token, config.JWT_SECRET)
 
@@ -45,4 +47,20 @@ export function verifyAuthToken(token: string, ws: WebSocket): AuthInfo {
 
 function closeWithError(ws: WebSocket, reason: string) {
   ws.close(4001, reason)
+}
+
+export function authenticateApiCall(headers: http.IncomingHttpHeaders): boolean {
+  return headers["x-internal-secret"] === config.INTERNAL_SECRET
+}
+
+export function setGrpcAuth(meta: grpc.Metadata): grpc.Metadata {
+  meta.set("x-internal-secret", config.BACKEND_API_SECRET)
+  return meta
+}
+
+export function authenticateGrpcCall(call: grpc.ServerUnaryCall<any, any>): boolean {
+  const metadata = call.metadata.get("x-internal-secret")
+
+  if (metadata.length === 0) return false
+  return String(metadata[0]) === config.INTERNAL_SECRET
 }
