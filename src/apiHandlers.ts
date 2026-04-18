@@ -53,7 +53,7 @@ export async function fetchRoomState(docId: string, rooms: Map<string, Room>): P
     }
 
     logger.debug({ docId, binary: binary.length }, "Snapshot response")
-    return kafkaService.sendMessage("document.sync", [
+    return kafkaService.sendMessage("document.events", [
       {
         key: docId,
         value: JSON.stringify(event),

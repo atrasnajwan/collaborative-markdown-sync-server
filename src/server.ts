@@ -206,7 +206,7 @@ export async function persistAllRooms() {
         data: Buffer.from(binary).toString("base64"),
       }
 
-      await kafkaService.sendMessage("document.sync", [
+      await kafkaService.sendMessage("document.events", [
         {
           key: docId,
           value: JSON.stringify(event),

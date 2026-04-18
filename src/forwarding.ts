@@ -2,7 +2,6 @@ import * as Y from "yjs"
 import { randomUUID } from "node:crypto"
 import { config } from "./config.js"
 import type { Conn, Room } from "./types.js"
-import { postDocumentUpdate } from "./internalApi.js"
 import { logger } from "./logger.js"
 import { kafkaService } from "./services/kafka.js"
 import { KafkaDocMessage } from "./services/types.js"
@@ -85,7 +84,7 @@ export async function forwardUpdateNow(
       data: Buffer.from(update).toString("base64"),
     }
 
-    await kafkaService.sendMessage("document.sync", [
+    await kafkaService.sendMessage("document.events", [
       {
         key: docId,
         value: JSON.stringify(event),
