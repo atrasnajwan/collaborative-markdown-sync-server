@@ -1,3 +1,4 @@
+import { syncRedis } from "../services/redis.js"
 import { UserRole } from "../types/user.js"
 import { isWsOpen } from "../utils/utils.js"
 import { rooms } from "./rooms.js"
@@ -16,7 +17,7 @@ export async function handleUserRoleChanged(
   const notificationPromises: Promise<void>[] = []
 
   room.conns.forEach(conn => {
-    if (conn.userId === String(userId)) {
+    if (conn.userId === userId) {
       conn.userRole = role as UserRole
       if (isWsOpen(conn.ws)) {
         // Create a promise for each WS notification
@@ -41,4 +42,20 @@ export async function handleUserRoleChanged(
   })
   await Promise.all(notificationPromises)
   return notificationPromises.length
+}
+
+/**
+ * Decide if using redis or not
+ */
+export async function changeUserPermission(
+  docId: string,
+  user_id: string,
+  role: string,
+): Promise<number> {
+  const roomName = `doc-${docId}`
+  if (syncRedis.isEnabled) {
+    return syncRedis.publishRoleChanged(roomName, user_id, role)
+  } else {
+    return handleUserRoleChanged(roomName, user_id, role)
+  }
 }

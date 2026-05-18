@@ -1,12 +1,13 @@
-import grpc from "@grpc/grpc-js"
+import grpc, { GrpcObject } from "@grpc/grpc-js"
 import protoLoader from "@grpc/proto-loader"
 
 import { config } from "../config/config.js"
 import { fetchRoomState, rooms } from "../core/rooms.js"
-import { deleteDocument, changeUserPermission } from "../api/handlers.js"
+import { deleteDocument } from "../api/handlers.js"
 import { logger } from "../services/logger.js"
 import { authenticateGrpcCall } from "../core/auth.js"
 import { DocumentNotFoundError } from "../core/documents.js"
+import { changeUserPermission } from "../core/users.js"
 
 const PROTO_PATH = new URL("../proto/server.proto", import.meta.url).pathname
 const packageDef = protoLoader.loadSync(PROTO_PATH, {
@@ -40,13 +41,11 @@ export function startGrpcServer(): grpc.Server | null {
         logger.debug("PostSnapshot called via gRPC")
         await fetchRoomState(docId, rooms)
         callback(null)
-      } catch (err: any) {
+      } catch (err) {
         // prefer checking for the dedicated error class
         if (err instanceof DocumentNotFoundError) {
           return callback({ code: grpc.status.NOT_FOUND, message: "document not found" })
         }
-        const msg = err && typeof err.message === "string" ? err.message : String(err)
-        logger.debug({ errMessage: msg }, "PostSnapshot catch message")
         logger.error({ error: err, docId }, "PostSnapshot gRPC handler error")
         return callback({ code: grpc.status.INTERNAL, message: "internal error" })
       }

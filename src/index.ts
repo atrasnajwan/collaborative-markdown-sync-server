@@ -16,6 +16,7 @@ import { startServer } from "./server.js"
 import grpc from "@grpc/grpc-js"
 import { persistAllRooms } from "./core/persistence.js"
 import { startGrpcServer } from "./grpc/server.js"
+import { exit } from "process"
 
 try {
   logger.info("Connecting redis...")
@@ -26,17 +27,19 @@ try {
 }
 
 try {
-  logger.info("Starting Kafka...")
+  logger.info("Starting Kafka Process...")
   await kafkaService.start()
-} catch (err) {
-  logger.error({ error: err }, "Error during starting kafka")
-  process.exit(0)
+} catch {
+  throw new Error("Error during starting Kafka")
 }
+
+logger.info("Starting HTTP server...")
 const server = startServer()
 
 // spin up gRPC server for internal API
 let grpcServer: grpc.Server | null = null
 try {
+  logger.info("Starting gRPC server...")
   grpcServer = startGrpcServer()
 } catch (err) {
   logger.error({ error: err }, "failed to start internal gRPC server")
@@ -55,7 +58,7 @@ async function gracefulShutdown(signal: string) {
   const forceExit = setTimeout(() => {
     logger.error("[Shutdown] Timed out! Forcefully exiting.")
     if (grpcServer) grpcServer.forceShutdown()
-    process.exit(1)
+    process.exitCode = 1
   }, 10000) // 10 seconds
 
   // Stop accepting new connections
@@ -88,11 +91,12 @@ async function gracefulShutdown(signal: string) {
     logger.info(`[Shutdown] Kafka is gracefully shut down.`)
     logger.debug("[Shutdown] All data saved. Clean exit.")
     clearTimeout(forceExit)
-    process.exit(0)
+    process.exitCode = 0
   } catch (err) {
     logger.error({ error: err }, "[Shutdown] Error during cleanup:")
-    process.exit(1)
+    process.exitCode = 1
   }
+  exit()
 }
 
 // Listen for Ctrl+C (Interrupt) and SIGTERM (Docker)

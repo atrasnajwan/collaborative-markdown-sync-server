@@ -3,14 +3,14 @@ import { Room } from "../types/room.js"
 import { logger } from "../services/logger.js"
 import { syncRedis } from "../services/redis.js"
 import { authenticateApiCall } from "../core/auth.js"
-import { handleDocumentDeleted } from "../core/documents.js"
-import { handleUserRoleChanged } from "../core/users.js"
+import { DocumentNotFoundError, handleDocumentDeleted } from "../core/documents.js"
+import { changeUserPermission, handleUserRoleChanged } from "../core/users.js"
 import { fetchRoomState } from "../core/rooms.js"
 
 const sendJSON = (
   res: http.ServerResponse,
   status: number,
-  data?: any,
+  data?: object,
   isBinary: boolean = false,
 ) => {
   res.writeHead(status, {
@@ -36,19 +36,6 @@ export async function deleteDocument(docId: string): Promise<number> {
   }
 }
 
-export async function changeUserPermission(
-  docId: string,
-  user_id: string,
-  role: string,
-): Promise<number> {
-  const roomName = `doc-${docId}`
-  if (syncRedis.isEnabled) {
-    return syncRedis.publishRoleChanged(roomName, user_id, role)
-  } else {
-    return handleUserRoleChanged(roomName, user_id, role)
-  }
-}
-
 export async function handleInternalAPI(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -67,13 +54,14 @@ export async function handleInternalAPI(
   const docId = parts[3]
   const action = parts[4]
 
+  
   // POST /internal/documents/:id/snapshot
   if (method === "POST" && action === "snapshot") {
     try {
       await fetchRoomState(docId, rooms)
       return sendJSON(res, 204)
     } catch (err) {
-      if ((err as any).message === "Document not found") {
+      if (err as DocumentNotFoundError) {
         return sendJSON(res, 404, { error: "Document not found" })
       }
       return sendJSON(res, 500, { error: "Failed to fetch last document state" })
@@ -86,8 +74,8 @@ export async function handleInternalAPI(
       const updated = await deleteDocument(docId)
       logger.debug({ updated }, "Notification sent")
       return sendJSON(res, 204)
-    } catch (wsError) {
-      logger.error({ error: wsError }, "Failed to notify client of document deleted")
+    } catch (error) {
+      logger.error({ error }, "Failed to notify client of document deleted")
       return sendJSON(res, 500, { error: "Failed to notify connected clients" })
     }
   }
@@ -104,8 +92,8 @@ export async function handleInternalAPI(
         ok: true,
         updated,
       })
-    } catch (wsError) {
-      logger.error({ error: wsError, user_id }, "Failed to notify client of permission change")
+    } catch (error) {
+      logger.error({ error, user_id }, "Failed to notify client of permission change")
       return sendJSON(res, 500, { error: "Failed to notify connected clients" })
     }
   }
