@@ -94,7 +94,7 @@ class KafkaService {
             case "notification-events":
               {
                 const payload: KafkaNotificationMessage = JSON.parse(message.value.toString())
-                logger.debug({ topic, partition, payload }, "[Kafka] Received notification message")
+                logger.trace({ topic, partition, payload }, "[Kafka] Received notification message")
 
                 switch (payload.type) {
                   case "document.role_updated":
@@ -104,7 +104,7 @@ class KafkaService {
                         String(payload.affected_user_id),
                         String(payload.role)
                       )
-                      logger.debug({ updated }, "Notification sent")
+                      logger.trace({ updated }, "Notification sent on role updated")
                     }
                     break
                   case "document.deleted":
@@ -112,7 +112,7 @@ class KafkaService {
                       const updated = await deleteDocument(
                         String(payload.document_id),
                       )
-                      logger.debug({ updated }, "Notification sent")
+                      logger.trace({ updated }, "Notification sent when document deleted")
                     }
                     break
                   default:

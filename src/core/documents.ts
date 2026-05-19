@@ -22,7 +22,7 @@ export function setupDocListeners(room: Room) {
 
     // get origin connection
     let originConn: Conn | undefined
-    if (origin && typeof origin === "object" && "send" in (origin as any)) {
+    if (origin && typeof origin === "object" && "send" in origin) {
       const originWs = origin as WebSocket
       originConn = Array.from(room.conns).find(c => c.ws === originWs)
     }
