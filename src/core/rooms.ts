@@ -122,12 +122,12 @@ export async function createConn(
   const awarenessClientId = (Math.random() * 0x7fffffff) | 0
   const docId = roomName.replace("doc-", "")
   const authInfo = verifyClientAuthToken(authToken, ws)
-  const userId = authInfo.userId
+  const userId = Number(authInfo.userId)
   logger.debug({ roomName, userId }, "Token verified")
 
   let userRole: UserRole = UserRole.None
   try {
-    const roleInfo = await fetchUserRole(docId, userId)
+    const roleInfo = await fetchUserRole(Number(docId), userId)
     userRole = roleInfo.role
     logger.debug({ roomName, userId, userRole }, "User role fetched")
   } catch (err) {
@@ -222,7 +222,7 @@ export function removeRoom(room: Room) {
   rooms.delete(room.name)
 }
 
-export async function fetchRoomState(docId: string, rooms: Map<string, Room>): Promise<void> {
+export async function fetchRoomState(docId: number, rooms: Map<string, Room>): Promise<void> {
   const roomName = `doc-${docId}`
   try {
     let binary = null
@@ -241,7 +241,7 @@ export async function fetchRoomState(docId: string, rooms: Map<string, Room>): P
       const event: KafkaDocMessage = {
         event_id: randomUUID(),
         type: "document.snapshot",
-        document_id: Number(docId),
+        document_id: docId,
         timestamp: Date.now(),
         data: toBase64(binary),
       }
@@ -249,7 +249,7 @@ export async function fetchRoomState(docId: string, rooms: Map<string, Room>): P
       logger.debug({ docId, binary: binary.length }, "Snapshot response")
       return kafkaService.sendMessage("document.events", [
         {
-          key: docId,
+          key: String(docId),
           value: JSON.stringify(event),
         },
       ])

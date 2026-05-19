@@ -8,7 +8,7 @@ import { rooms } from "./rooms.js"
  */
 export async function handleUserRoleChanged(
   roomName: string,
-  userId: string,
+  userId: number,
   role: string,
 ): Promise<number> {
   const room = rooms.get(roomName)
@@ -48,8 +48,8 @@ export async function handleUserRoleChanged(
  * Decide if using redis or not
  */
 export async function changeUserPermission(
-  docId: string,
-  user_id: string,
+  docId: number,
+  user_id: number,
   role: string,
 ): Promise<number> {
   const roomName = `doc-${docId}`

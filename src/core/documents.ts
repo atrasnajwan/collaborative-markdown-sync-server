@@ -88,7 +88,7 @@ export async function handleDocumentDeleted(roomName: string): Promise<number> {
 /**
  * Decide if using redis or not
  */
-export async function deleteDocument(docId: string): Promise<number> {
+export async function deleteDocument(docId: number): Promise<number> {
   const roomName = `doc-${docId}`
   if (syncRedis.isEnabled) {
     return syncRedis.publishDocumentDeleted(roomName)

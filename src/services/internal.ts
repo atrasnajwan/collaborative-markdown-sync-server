@@ -40,7 +40,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   return (await response.json()) as T
 }
 
-export async function fetchLastDocumentState(docId: string): Promise<DocumentState> {
+export async function fetchLastDocumentState(docId: number): Promise<DocumentState> {
   if (useGrpc()) {
     return getDocumentState(docId)
   }
@@ -52,9 +52,9 @@ export async function fetchLastDocumentState(docId: string): Promise<DocumentSta
 }
 
 export async function postDocumentUpdate(
-  docId: string,
+  docId: number,
   update: Uint8Array,
-  userId?: string,
+  userId?: number,
 ): Promise<void> {
   if (useGrpc()) {
     return createDocumentUpdate(docId, update, userId)
@@ -65,7 +65,7 @@ export async function postDocumentUpdate(
     "content-type": "application/octet-stream",
   }
   if (userId) {
-    headers["x-user-id"] = userId
+    headers["x-user-id"] = String(userId)
   }
   return request<void>(`/internal/documents/${docId}/update`, {
     method: "POST",
@@ -74,7 +74,7 @@ export async function postDocumentUpdate(
   })
 }
 
-export async function postDocumentSnapshot(docId: string, state: Uint8Array): Promise<void> {
+export async function postDocumentSnapshot(docId: number, state: Uint8Array): Promise<void> {
   if (useGrpc()) {
     return createDocumentSnapshot(docId, state)
   }
@@ -90,7 +90,7 @@ export async function postDocumentSnapshot(docId: string, state: Uint8Array): Pr
   })
 }
 
-export async function fetchUserRole(docId: string, userId: string): Promise<UserRoleResponse> {
+export async function fetchUserRole(docId: number, userId: number): Promise<UserRoleResponse> {
   if (useGrpc()) {
     return getUserRole(docId, userId)
   }

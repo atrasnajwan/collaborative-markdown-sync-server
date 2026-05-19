@@ -15,11 +15,17 @@ interface SyncServerPackage extends grpc.GrpcObject {
   }
 }
 
+export interface GrpcRequestMeta {
+  metadata: grpc.Metadata
+}
+
 interface GrpcDocRequest {
+  metadata: grpc.Metadata
   id: number
 }
 
 interface GrpcPermissionChangeRequest {
+  metadata: grpc.Metadata
   doc_id: number
   user_id: number
   role: string
@@ -54,7 +60,7 @@ export function startGrpcServer(): grpc.Server | null {
         return callback({ code: grpc.status.PERMISSION_DENIED, details: "unauthorized" })
       }
 
-      const docId = String(call.request.id || "")
+      const docId = call.request.id
       try {
         logger.debug("PostSnapshot called via gRPC")
         await fetchRoomState(docId, rooms)
@@ -77,7 +83,7 @@ export function startGrpcServer(): grpc.Server | null {
         return callback({ code: grpc.status.PERMISSION_DENIED, details: "unauthorized" })
       }
 
-      const docId = String(call.request.id || "")
+      const docId = call.request.id
       try {
         logger.debug("DeleteDocument called via gRPC")
         await deleteDocument(docId)
@@ -99,7 +105,7 @@ export function startGrpcServer(): grpc.Server | null {
       const { doc_id, user_id, role } = call.request
       try {
         logger.debug("PermissionChanged called via gRPC")
-        await changeUserPermission(String(doc_id), String(user_id), String(role))
+        await changeUserPermission(doc_id, user_id, role)
         callback(null, {})
       } catch (err) {
         logger.error({ error: err, docId: doc_id }, "PermissionChanged gRPC handler error")

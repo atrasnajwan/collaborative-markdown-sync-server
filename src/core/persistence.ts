@@ -70,7 +70,7 @@ export async function forwardUpdate(room: Room, update: Uint8Array, conn: Conn) 
 export async function forwardUpdateNow(
   room: Room,
   update: Uint8Array,
-  userId: string,
+  userId: number,
 ): Promise<void> {
   const docId = room.name.replace("doc-", "")
   logger.debug(
@@ -83,7 +83,7 @@ export async function forwardUpdateNow(
       event_id: randomUUID(),
       type: "document.updated",
       document_id: Number(docId),
-      user_id: Number(userId),
+      user_id: userId,
       timestamp: Date.now(),
       data: toBase64(update),
     }
@@ -133,7 +133,7 @@ export async function hydrateRoomFromBackend(room: Room) {
   logger.info({ roomName: room.name, docId }, "Starting room hydration from backend")
 
   try {
-    const state = await fetchLastDocumentState(docId)
+    const state = await fetchLastDocumentState(Number(docId))
     if (!state) {
       logger.warn({ roomName: room.name, docId }, "No document state returned from backend")
       return

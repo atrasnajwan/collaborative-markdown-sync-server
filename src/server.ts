@@ -1,6 +1,7 @@
 import { logger } from "./services/logger.js"
 import { createServer, Server } from "node:http"
 import { WebSocketServer } from "ws"
+import type { WebSocket } from "ws"
 
 import { normalizeRoomFromUrl, config } from "./config/config.js"
 import {
@@ -48,8 +49,8 @@ export function startServer(): Server {
   wss.on("connection", async (ws, req) => {
     logger.info({ ip: req.socket.remoteAddress }, "Client connected")
 
-    const messageQueue: any = []
-    const handleMessage = (data: any, isBinary: boolean) => {
+    const messageQueue: { data: WebSocket.RawData; isBinary: boolean }[] = []
+    const handleMessage = (data: WebSocket.RawData, isBinary: boolean) => {
       messageQueue.push({ data, isBinary })
     }
     // temporary listener
@@ -112,7 +113,7 @@ export function startServer(): Server {
           logger.debug({ messageQueue: messageQueue.length }, "Message queue before init")
           for (const msg of messageQueue) {
             logger.trace(
-              { roomName, connId: conn.id, data: msg.data.length },
+              { roomName, connId: conn.id },
               "Processing queue message",
             )
             handleOnMessage(msg.data, msg.isBinary, room, roomName, conn)

@@ -4,6 +4,7 @@ import { config } from "../config/config.js"
 import { logger } from "../services/logger.js"
 import type { WebSocket } from "ws"
 import grpc from "@grpc/grpc-js"
+import { GrpcRequestMeta } from "../grpc/server.js"
 
 export type AuthInfo = {
   userId: string
@@ -20,7 +21,7 @@ export function verifyClientAuthToken(token: string, ws: WebSocket): AuthInfo {
     const payload: JwtPayload =
       typeof decoded === "string" ? JSON.parse(decoded) : (decoded as JwtPayload)
 
-    const raw = (payload as any).user_id as number | string | undefined
+    const raw = payload.user_id as number | string | undefined
 
     // Payload Validation
     if (raw === undefined) {
@@ -31,9 +32,10 @@ export function verifyClientAuthToken(token: string, ws: WebSocket): AuthInfo {
 
     const userId = typeof raw === "number" ? String(raw) : raw
     return { userId }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (err: any) {
     let reason = "Unauthorized"
-    if (err.name === "TokenExpiredError") {
+    if (err?.name === "TokenExpiredError") {
       reason = "Token expired"
       logger.warn({ token }, "Client attempted connection with expired token")
     } else {
@@ -58,7 +60,8 @@ export function setGrpcAuth(meta: grpc.Metadata): grpc.Metadata {
   return meta
 }
 
-export function authenticateGrpcCall(call: grpc.ServerUnaryCall<any, any>): boolean {
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export function authenticateGrpcCall(call: grpc.ServerUnaryCall<GrpcRequestMeta, {}>): boolean {
   const metadata = call.metadata.get("x-internal-secret")
 
   if (metadata.length === 0) return false

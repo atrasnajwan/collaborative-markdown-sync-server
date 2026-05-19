@@ -40,53 +40,65 @@ export async function handleInternalAPI(
     return res.end()
   }
 
-  const parts = url.split("/")
-  const docId = parts[3]
-  const action = parts[4]
+  try {
+    const parsedUrl = new URL(url)
+    const parts = parsedUrl.pathname.split("/")
 
-  
-  // POST /internal/documents/:id/snapshot
-  if (method === "POST" && action === "snapshot") {
-    try {
-      await fetchRoomState(docId, rooms)
-      return sendJSON(res, 204)
-    } catch (err) {
-      if (err as DocumentNotFoundError) {
-        return sendJSON(res, 404, { error: "Document not found" })
+    const docIdRaw = parts[3]
+    const action = parts[4]
+
+    // check valid docId
+    const docId = Number(docIdRaw);
+    if (!docIdRaw || isNaN(docId) || docId <= 0) {
+      return sendJSON(res, 400, { error: "Invalid or missing docId" })
+    }
+
+    // POST /internal/documents/:id/snapshot
+    if (method === "POST" && action === "snapshot") {
+      try {
+        await fetchRoomState(docId, rooms)
+        return sendJSON(res, 204)
+      } catch (err) {
+        if (err as DocumentNotFoundError) {
+          return sendJSON(res, 404, { error: "Document not found" })
+        }
+        return sendJSON(res, 500, { error: "Failed to fetch last document state" })
       }
-      return sendJSON(res, 500, { error: "Failed to fetch last document state" })
     }
-  }
 
-  // DELETE /internal/documents/:id
-  if (method === "DELETE" && !action) {
-    try {
-      const updated = await deleteDocument(docId)
-      logger.debug({ updated }, "Notification sent")
-      return sendJSON(res, 204)
-    } catch (error) {
-      logger.error({ error }, "Failed to notify client of document deleted")
-      return sendJSON(res, 500, { error: "Failed to notify connected clients" })
+    // DELETE /internal/documents/:id
+    if (method === "DELETE" && !action) {
+      try {
+        const updated = await deleteDocument(docId)
+        logger.debug({ updated }, "Notification sent")
+        return sendJSON(res, 204)
+      } catch (error) {
+        logger.error({ error }, "Failed to notify client of document deleted")
+        return sendJSON(res, 500, { error: "Failed to notify connected clients" })
+      }
     }
-  }
 
-  // PUT /internal/documents/:id/permission
-  if (method === "PUT" && action === "permission") {
-    const body = await getBody(req)
-    const { user_id, role } = JSON.parse(body)
+    // PUT /internal/documents/:id/permission
+    if (method === "PUT" && action === "permission") {
+      const body = await getBody(req)
+      const { user_id, role } = JSON.parse(body)
 
-    try {
-      const updated = await changeUserPermission(docId, user_id, role)
-      logger.debug({ updated }, "Notification sent")
-      return sendJSON(res, 200, {
-        ok: true,
-        updated,
-      })
-    } catch (error) {
-      logger.error({ error, user_id }, "Failed to notify client of permission change")
-      return sendJSON(res, 500, { error: "Failed to notify connected clients" })
+      try {
+        const updated = await changeUserPermission(docId, user_id, role)
+        logger.debug({ updated }, "Notification sent")
+        return sendJSON(res, 200, {
+          ok: true,
+          updated,
+        })
+      } catch (error) {
+        logger.error({ error, user_id }, "Failed to notify client of permission change")
+        return sendJSON(res, 500, { error: "Failed to notify connected clients" })
+      }
     }
-  }
 
-  sendJSON(res, 404)
+    sendJSON(res, 404)
+  } catch {
+    res.writeHead(500)
+    return res.end()
+  }
 }

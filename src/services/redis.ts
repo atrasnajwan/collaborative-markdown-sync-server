@@ -241,7 +241,7 @@ class SyncRedis {
     })
   }
 
-  public publishRoleChanged(roomName: string, userId: string, role: string) {
+  public publishRoleChanged(roomName: string, userId: number, role: string) {
     if (!this.isEnabled || !this.pubClient) return 0
 
     logger.trace({ roomName, userId, role }, "[User Role] Publish to channel")

@@ -100,8 +100,8 @@ class KafkaService {
                   case "document.role_updated":
                     {
                       const updated = await changeUserPermission(
-                        String(payload.document_id),
-                        String(payload.affected_user_id),
+                        payload.document_id,
+                        Number(payload.affected_user_id),
                         String(payload.role)
                       )
                       logger.trace({ updated }, "Notification sent on role updated")
@@ -110,7 +110,7 @@ class KafkaService {
                   case "document.deleted":
                     {
                       const updated = await deleteDocument(
-                        String(payload.document_id),
+                        payload.document_id,
                       )
                       logger.trace({ updated }, "Notification sent when document deleted")
                     }

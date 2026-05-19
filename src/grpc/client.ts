@@ -66,10 +66,10 @@ function makeMetadata(): grpc.Metadata {
   return setGrpcAuth(meta)
 }
 
-export function getDocumentState(docId: string): Promise<DocumentState> {
+export function getDocumentState(docId: number): Promise<DocumentState> {
   return new Promise((resolve, reject) => {
     ensureGrpcClient()?.GetDocumentState(
-      { id: Number(docId) },
+      { id: docId },
       makeMetadata(),
       (err: grpc.ServiceError | null, resp: DocumentStateResponse) => {
         if (err) return reject(err)
@@ -88,17 +88,17 @@ export function getDocumentState(docId: string): Promise<DocumentState> {
 }
 
 export function createDocumentUpdate(
-  docId: string,
+  docId: number,
   update: Uint8Array,
-  userId?: string,
+  userId?: number,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const req: DocumentUpdateRequest = {
-      doc_id: Number(docId),
+      doc_id: docId,
       update: Buffer.from(update),
     }
     if (userId) {
-      req.user_id = Number(userId)
+      req.user_id = userId
     }
     ensureGrpcClient()?.CreateUpdate(req, makeMetadata(), (err: grpc.ServiceError | null) => {
       if (err) return reject(err)
@@ -107,10 +107,10 @@ export function createDocumentUpdate(
   })
 }
 
-export function createDocumentSnapshot(docId: string, state: Uint8Array): Promise<void> {
+export function createDocumentSnapshot(docId: number, state: Uint8Array): Promise<void> {
   return new Promise((resolve, reject) => {
     ensureGrpcClient()?.CreateSnapshot(
-      { doc_id: Number(docId), snapshot: Buffer.from(state) },
+      { doc_id: docId, snapshot: Buffer.from(state) },
       makeMetadata(),
       (err: grpc.ServiceError | null) => {
         if (err) return reject(err)
@@ -120,10 +120,10 @@ export function createDocumentSnapshot(docId: string, state: Uint8Array): Promis
   })
 }
 
-export function getUserRole(docId: string, userId: string): Promise<UserRoleResponse> {
+export function getUserRole(docId: number, userId: number): Promise<UserRoleResponse> {
   return new Promise((resolve, reject) => {
     ensureGrpcClient()?.GetUserRole(
-      { doc_id: Number(docId), user_id: Number(userId) },
+      { doc_id: docId, user_id: userId },
       makeMetadata(),
       (err: grpc.ServiceError | null, resp: UserRoleResponse) => {
         if (err) return reject(err)

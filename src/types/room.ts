@@ -9,7 +9,7 @@ export type RoomName = string
 export type ForwardQueue = {
   timer?: NodeJS.Timeout
   updates: Uint8Array[]
-  lastUserId: string
+  lastUserId: number
 }
 
 export type Conn = {
@@ -18,7 +18,7 @@ export type Conn = {
   room: RoomName
   awarenessClientId: number
   closed: boolean
-  userId: string
+  userId: number
   userRole: UserRole
 }
 
