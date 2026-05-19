@@ -60,7 +60,7 @@ export function setupDocListeners(room: Room) {
 }
 
 /**
- * Delete document deleted and notify all clients
+ * Delete document and notify all clients
  */
 export async function handleDocumentDeleted(roomName: string): Promise<number> {
   const room = rooms.get(roomName)
@@ -83,6 +83,18 @@ export async function handleDocumentDeleted(roomName: string): Promise<number> {
   await Promise.all(notificationPromises)
   removeRoom(room)
   return notificationPromises.length
+}
+
+/**
+ * Decide if using redis or not
+ */
+export async function deleteDocument(docId: string): Promise<number> {
+  const roomName = `doc-${docId}`
+  if (syncRedis.isEnabled) {
+    return syncRedis.publishDocumentDeleted(roomName)
+  } else {
+    return handleDocumentDeleted(roomName)
+  }
 }
 
 export function getLatestDocState(room: Room): Buffer<ArrayBuffer> {

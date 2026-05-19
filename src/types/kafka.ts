@@ -11,9 +11,9 @@ export interface KafkaNotificationMessage {
   event_id: string
   type: string
   document_id: number
-  triggered_by: number
-  affected_user_id: number
+  triggered_by?: number
+  affected_user_id?: number
   timestamp: number
-  role: string
+  role?: string
 }
 

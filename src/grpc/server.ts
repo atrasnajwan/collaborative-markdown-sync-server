@@ -3,10 +3,9 @@ import protoLoader from "@grpc/proto-loader"
 
 import { config } from "../config/config.js"
 import { fetchRoomState, rooms } from "../core/rooms.js"
-import { deleteDocument } from "../api/handlers.js"
 import { logger } from "../services/logger.js"
 import { authenticateGrpcCall } from "../core/auth.js"
-import { DocumentNotFoundError } from "../core/documents.js"
+import { deleteDocument, DocumentNotFoundError } from "../core/documents.js"
 import { changeUserPermission } from "../core/users.js"
 
 const PROTO_PATH = new URL("../proto/server.proto", import.meta.url).pathname

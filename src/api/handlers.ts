@@ -1,10 +1,9 @@
 import http from "http"
 import { Room } from "../types/room.js"
 import { logger } from "../services/logger.js"
-import { syncRedis } from "../services/redis.js"
 import { authenticateApiCall } from "../core/auth.js"
-import { DocumentNotFoundError, handleDocumentDeleted } from "../core/documents.js"
-import { changeUserPermission, handleUserRoleChanged } from "../core/users.js"
+import { deleteDocument, DocumentNotFoundError } from "../core/documents.js"
+import { changeUserPermission } from "../core/users.js"
 import { fetchRoomState } from "../core/rooms.js"
 
 const sendJSON = (
@@ -25,15 +24,6 @@ const getBody = (req: http.IncomingMessage): Promise<string> => {
     req.on("data", chunk => (body += chunk))
     req.on("end", () => resolve(body))
   })
-}
-
-export async function deleteDocument(docId: string): Promise<number> {
-  const roomName = `doc-${docId}`
-  if (syncRedis.isEnabled) {
-    return syncRedis.publishDocumentDeleted(roomName)
-  } else {
-    return handleDocumentDeleted(roomName)
-  }
 }
 
 export async function handleInternalAPI(

@@ -3,6 +3,7 @@ import { config } from "../config/config.js"
 import { logger } from "./logger.js"
 import { KafkaNotificationMessage } from "../types/kafka.js"
 import { changeUserPermission } from "../core/users.js"
+import { deleteDocument } from "../core/documents.js"
 
 class KafkaService {
   private producer: Producer
@@ -82,32 +83,44 @@ class KafkaService {
     }
   }
 
-  private async handleMessage():   Promise<void> {
+  private async handleMessage(): Promise<void> {
     await this.consumer?.run({
-      autoCommit: false, 
+      autoCommit: false,
       eachMessage: async ({ topic, partition, message }: { topic: string; partition: number; message: Message }) => {
         if (!message.value) return
 
         try {
           switch (topic) {
             case "notification-events":
-              { const payload: KafkaNotificationMessage = JSON.parse(message.value.toString())
-              logger.debug({ topic, partition, payload }, "[Kafka] Received notification message")
-              
-              switch (payload.type) {
-                case "document.role_updated":
-                  { const updated = await changeUserPermission(
-                    String(payload.document_id),
-                    String(payload.affected_user_id),
-                    payload.role
-                  )
-                  logger.debug({ updated }, "Notification sent")
-                  break }
-                default:
-                  logger.warn({ topic, payload }, "[Kafka] Unknown type on topic")
-                  return
-              } 
-              break }
+              {
+                const payload: KafkaNotificationMessage = JSON.parse(message.value.toString())
+                logger.debug({ topic, partition, payload }, "[Kafka] Received notification message")
+
+                switch (payload.type) {
+                  case "document.role_updated":
+                    {
+                      const updated = await changeUserPermission(
+                        String(payload.document_id),
+                        String(payload.affected_user_id),
+                        String(payload.role)
+                      )
+                      logger.debug({ updated }, "Notification sent")
+                    }
+                    break
+                  case "document.deleted":
+                    {
+                      const updated = await deleteDocument(
+                        String(payload.document_id),
+                      )
+                      logger.debug({ updated }, "Notification sent")
+                    }
+                    break
+                  default:
+                    logger.warn({ topic, payload }, "[Kafka] Unknown type on topic")
+                    return
+                }
+              }
+              break
             default:
               logger.warn({ topic }, "[Kafka] Unknown topic")
               return
