@@ -26,23 +26,22 @@ interface GrpcPermissionChangeRequest {
 }
 
 const PROTO_PATH = new URL("../proto/server.proto", import.meta.url).pathname
-const packageDef = protoLoader.loadSync(PROTO_PATH, {
-  keepCase: true,
-  longs: String,
-  enums: String,
-  defaults: true,
-  oneofs: true,
-})
-
-const grpcObj = grpc.loadPackageDefinition(packageDef) as SyncServerPackage
-
-const SyncServerInternal = grpcObj.syncserver.SyncServerInternal
 
 export function startGrpcServer(): grpc.Server | null {
   if (!config.GRPC_PORT) {
     logger.debug("gRPC internal API disabled (no port configured)")
     return null
   }
+
+  const packageDef = protoLoader.loadSync(PROTO_PATH, {
+    keepCase: true,
+    longs: String,
+    enums: String,
+    defaults: true,
+    oneofs: true,
+  })
+  const grpcObj = grpc.loadPackageDefinition(packageDef) as SyncServerPackage
+  const SyncServerInternal = grpcObj.syncserver.SyncServerInternal
 
   const server = new grpc.Server()
 
