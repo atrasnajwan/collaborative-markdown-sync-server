@@ -6,14 +6,20 @@ import { changeUserPermission } from "../core/users.js"
 import { deleteDocument } from "../core/documents.js"
 
 class KafkaService {
-  private producer: Producer
+  private producer: Producer | null = null
   private consumer: Consumer | null = null
-  private consumerRunning = false
+  public producerConnected: boolean = false
+  private consumerRunning: boolean = false
 
   private TOPICS = [
     "notification-events"
   ]
   constructor() {
+    logger.debug({ brokers: config.KAFKA_BROKERS }, "Init Kafka")
+    if (!config.KAFKA_BROKERS) {
+      logger.info("Kafka Brokers not found")
+      return
+    }
     const kafka = new Kafka({
       clientId: "collaborative-markdown",
       brokers: config.KAFKA_BROKERS,
@@ -37,8 +43,13 @@ class KafkaService {
   }
 
   public async startProducer(): Promise<void> {
+    if (!this.producer) {
+      logger.info("[Kafka] Producer not connected")
+      return
+    }
     try {
       await this.producer.connect()
+      this.producerConnected = true
       logger.info("[Kafka] Producer connected successfully")
     } catch (error) {
       logger.error({ error }, "[Kafka] Error connecting producer")
@@ -47,7 +58,10 @@ class KafkaService {
   }
 
   private async startConsumer(): Promise<void> {
-    if (!this.consumer) return
+    if (!this.consumer) {
+      logger.info("[Kafka] Consumer not connected")
+      return
+    }
     if (this.consumerRunning) {
       logger.warn("[Kafka] Consumer already running")
       return
@@ -72,6 +86,7 @@ class KafkaService {
   }
 
   public async sendMessage(topic: string, messages: Message[]): Promise<void> {
+    if (!this.producer) return
     try {
       await this.producer.send({
         topic,
@@ -84,7 +99,8 @@ class KafkaService {
   }
 
   private async handleMessage(): Promise<void> {
-    await this.consumer?.run({
+    if (!this.consumer) return
+    await this.consumer.run({
       autoCommit: false,
       eachMessage: async ({ topic, partition, message }: { topic: string; partition: number; message: Message }) => {
         if (!message.value) return
@@ -140,10 +156,8 @@ class KafkaService {
   }
 
   public async shutdown(): Promise<void> {
-    await this.producer.disconnect()
-    if (this.consumer) {
-      await this.consumer.disconnect()
-    }
+    if (this.producer) await this.producer.disconnect()
+    if (this.consumer) await this.consumer.disconnect()
   }
 }
 
