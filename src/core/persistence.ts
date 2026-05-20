@@ -1,6 +1,6 @@
 import * as Y from "yjs"
 import type { Conn, Room, RoomName } from "../types/room.js"
-import { fetchLastDocumentState } from "../services/internal.js"
+import { fetchLastDocumentState, postDocumentSnapshot, postDocumentUpdate } from "../services/internal.js"
 import { logger } from "../services/logger.js"
 import { randomUUID } from "crypto"
 import { kafkaService } from "../services/kafka.js"
@@ -9,6 +9,7 @@ import { decodeBase64ToUint8Array, toBase64 } from "../utils/utils.js"
 import { config } from "../config/config.js"
 import { getLatestDocState } from "./documents.js"
 import { DocumentState } from "../types/document.js"
+import { fetchRoomState } from "./rooms.js"
 
 /**
  * Forward each Yjs document update to the message queue.
@@ -79,21 +80,26 @@ export async function forwardUpdateNow(
   )
 
   try {
-    const event: KafkaDocMessage = {
-      event_id: randomUUID(),
-      type: "document.updated",
-      document_id: Number(docId),
-      user_id: userId,
-      timestamp: Date.now(),
-      data: toBase64(update),
-    }
+    // prioritize using kafka if available
+    if (kafkaService.producerConnected) {
+      const event: KafkaDocMessage = {
+        event_id: randomUUID(),
+        type: "document.updated",
+        document_id: Number(docId),
+        user_id: userId,
+        timestamp: Date.now(),
+        data: toBase64(update),
+      }
 
-    await kafkaService.sendMessage("document.events", [
-      {
-        key: docId,
-        value: JSON.stringify(event),
-      },
-    ])
+      await kafkaService.sendMessage("document.events", [
+        {
+          key: docId,
+          value: JSON.stringify(event),
+        },
+      ])
+    } else {
+      await postDocumentUpdate(Number(docId), update, userId)
+    }
     logger.trace({ roomName: room.name, docId }, "Update forwarded successfully")
   } catch (err) {
     logger.error({ roomName: room.name, docId, error: err }, "Failed to forward update to backend")
@@ -101,26 +107,34 @@ export async function forwardUpdateNow(
   }
 }
 
-// apply document state (snapshot + updates)
-function applyDocumentStateToYDoc(doc: Y.Doc, state: DocumentState): void {
-  if (state.snapshot && state.snapshot.length > 0) {
-    const snapshotUpdate = decodeBase64ToUint8Array(state.snapshot)
-    logger.trace({ snapshotSize: snapshotUpdate.length }, "Applying snapshot to Y.Doc")
-    Y.applyUpdate(doc, snapshotUpdate)
-  }
+export async function pushDocumentSnapshot(docId: number, rooms: Map<string, Room>): Promise<void> {
+  try {
+    const binary = await fetchRoomState(docId, rooms)
+    if (binary) {
+      if (kafkaService.producerConnected) {
+        // push message to kafka
+        const event: KafkaDocMessage = {
+          event_id: randomUUID(),
+          type: "document.snapshot",
+          document_id: docId,
+          timestamp: Date.now(),
+          data: toBase64(binary),
+        }
 
-  const sortedUpdates = [...state.updates].sort((a, b) => a.seq - b.seq)
-  let appliedCount = 0
-
-  for (const u of sortedUpdates) {
-    if (!u.binary) continue
-    const update = decodeBase64ToUint8Array(u.binary)
-    Y.applyUpdate(doc, update)
-    appliedCount++
-  }
-
-  if (appliedCount > 0) {
-    logger.trace({ appliedUpdateCount: appliedCount }, "Applied updates to Y.Doc")
+        logger.debug({ docId, binary: binary.length }, "Snapshot response")
+        return kafkaService.sendMessage("document.events", [
+          {
+            key: String(docId),
+            value: JSON.stringify(event),
+          },
+        ])
+      } else {
+        await postDocumentSnapshot(Number(docId), binary)
+      }
+    }
+  } catch (error) {
+    logger.error({ error, docId }, "Failed to push snapshot to kafka")
+    throw error
   }
 }
 
@@ -159,21 +173,25 @@ export async function persistAllRooms(rooms: Map<RoomName, Room>) {
       const docId = room.name.replace("doc-", "")
       const binary = getLatestDocState(room)
 
-      const event: KafkaDocMessage = {
-        event_id: randomUUID(),
-        type: "document.snapshot",
-        document_id: Number(docId),
-        timestamp: Date.now(),
-        data: toBase64(binary),
+      // prioritize using kafka if available
+      if (kafkaService.producerConnected) {
+        const event: KafkaDocMessage = {
+          event_id: randomUUID(),
+          type: "document.snapshot",
+          document_id: Number(docId),
+          timestamp: Date.now(),
+          data: toBase64(binary),
+        }
+
+        await kafkaService.sendMessage("document.events", [
+          {
+            key: docId,
+            value: JSON.stringify(event),
+          },
+        ])
+      } else {
+        await postDocumentSnapshot(Number(docId), binary)
       }
-
-      await kafkaService.sendMessage("document.events", [
-        {
-          key: docId,
-          value: JSON.stringify(event),
-        },
-      ])
-
       logger.debug({ roomName: room.name, size: binary.length }, "Room state saved successfully")
     } catch (e) {
       logger.error({ roomName: room.name, error: e }, "Failed to save room state")
@@ -181,4 +199,27 @@ export async function persistAllRooms(rooms: Map<RoomName, Room>) {
   })
   await Promise.all(promises)
   logger.info("Room persistence complete")
+}
+
+// apply document state (snapshot + updates)
+function applyDocumentStateToYDoc(doc: Y.Doc, state: DocumentState): void {
+  if (state.snapshot && state.snapshot.length > 0) {
+    const snapshotUpdate = decodeBase64ToUint8Array(state.snapshot)
+    logger.trace({ snapshotSize: snapshotUpdate.length }, "Applying snapshot to Y.Doc")
+    Y.applyUpdate(doc, snapshotUpdate)
+  }
+
+  const sortedUpdates = [...state.updates].sort((a, b) => a.seq - b.seq)
+  let appliedCount = 0
+
+  for (const u of sortedUpdates) {
+    if (!u.binary) continue
+    const update = decodeBase64ToUint8Array(u.binary)
+    Y.applyUpdate(doc, update)
+    appliedCount++
+  }
+
+  if (appliedCount > 0) {
+    logger.trace({ appliedUpdateCount: appliedCount }, "Applied updates to Y.Doc")
+  }
 }

@@ -1,3 +1,4 @@
+import { logger } from "../services/logger.js"
 import { syncRedis } from "../services/redis.js"
 import { UserRole } from "../types/user.js"
 import { isWsOpen } from "../utils/utils.js"
@@ -54,6 +55,7 @@ export async function changeUserPermission(
 ): Promise<number> {
   const roomName = `doc-${docId}`
   if (syncRedis.isEnabled) {
+    logger.trace("Publish process to Redis")
     return syncRedis.publishRoleChanged(roomName, user_id, role)
   } else {
     return handleUserRoleChanged(roomName, user_id, role)

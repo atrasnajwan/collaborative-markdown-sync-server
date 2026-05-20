@@ -5,6 +5,7 @@ import { authenticateApiCall } from "../core/auth.js"
 import { deleteDocument, DocumentNotFoundError } from "../core/documents.js"
 import { changeUserPermission } from "../core/users.js"
 import { fetchRoomState } from "../core/rooms.js"
+import { pushDocumentSnapshot } from "../core/persistence.js"
 
 const sendJSON = (
   res: http.ServerResponse,
@@ -54,17 +55,33 @@ export async function handleInternalAPI(
     }
 
     // POST /internal/documents/:id/snapshot
+    // push current document snapshot to kafka message or via http/grpc
     if (method === "POST" && action === "snapshot") {
       try {
-        await fetchRoomState(docId, rooms)
+        await pushDocumentSnapshot(docId, rooms)
         return sendJSON(res, 204)
       } catch (err) {
         if (err as DocumentNotFoundError) {
           return sendJSON(res, 404, { error: "Document not found" })
         }
-        return sendJSON(res, 500, { error: "Failed to fetch last document state" })
+        return sendJSON(res, 500, { error: "Failed to get document snapshot" })
       }
     }
+
+    // GET /internal/documents/:id/state
+    // return current document state in base64 string
+    if (method === "GET" && action === "state") {
+      try {
+        const docState = await fetchRoomState(docId, rooms)
+        return sendJSON(res, 200, docState, true)
+      } catch (err) {
+        if (err as DocumentNotFoundError) {
+          return sendJSON(res, 404, { error: "Document not found" })
+        }
+        return sendJSON(res, 500, { error: "Failed to get document snapshot" })
+      }
+    }
+
 
     // DELETE /internal/documents/:id
     if (method === "DELETE" && !action) {

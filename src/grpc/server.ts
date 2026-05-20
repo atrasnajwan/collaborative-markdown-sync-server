@@ -8,6 +8,7 @@ import { logger } from "../services/logger.js"
 import { authenticateGrpcCall } from "../core/auth.js"
 import { deleteDocument, DocumentNotFoundError } from "../core/documents.js"
 import { changeUserPermission } from "../core/users.js"
+import { pushDocumentSnapshot } from "../core/persistence.js"
 
 interface SyncServerPackage extends grpc.GrpcObject {
   syncserver: {
@@ -52,6 +53,7 @@ export function startGrpcServer(): grpc.Server | null {
   const server = new grpc.Server()
 
   server.addService(SyncServerInternal.service, {
+    // push current document snapshot to kafka message or via http/grpc
     async PostSnapshot(
       call: grpc.ServerUnaryCall<GrpcDocRequest, {}>,
       callback: grpc.sendUnaryData<{}>
@@ -63,7 +65,7 @@ export function startGrpcServer(): grpc.Server | null {
       const docId = call.request.id
       try {
         logger.debug("PostSnapshot called via gRPC")
-        await fetchRoomState(docId, rooms)
+        await pushDocumentSnapshot(docId, rooms)
         callback(null, {})
       } catch (err) {
         // prefer checking for the dedicated error class
@@ -71,6 +73,29 @@ export function startGrpcServer(): grpc.Server | null {
           return callback({ code: grpc.status.NOT_FOUND, details: "document not found" })
         }
         logger.error({ error: err, docId }, "PostSnapshot gRPC handler error")
+        return callback({ code: grpc.status.INTERNAL, details: "internal error" })
+      }
+    },
+    // return current document state
+    async GetState(
+      call: grpc.ServerUnaryCall<GrpcDocRequest, {}>,
+      callback: grpc.sendUnaryData<{}>
+    ) {
+      if (!authenticateGrpcCall(call)) {
+        return callback({ code: grpc.status.PERMISSION_DENIED, details: "unauthorized" })
+      }
+
+      const docId = call.request.id
+      try {
+        logger.debug("GetState called via gRPC")
+        const binary = await fetchRoomState(docId, rooms)
+        callback(null, { state: binary })
+      } catch (err) {
+        // prefer checking for the dedicated error class
+        if (err instanceof DocumentNotFoundError) {
+          return callback({ code: grpc.status.NOT_FOUND, details: "document not found" })
+        }
+        logger.error({ error: err, docId }, "GetState gRPC handler error")
         return callback({ code: grpc.status.INTERNAL, details: "internal error" })
       }
     },

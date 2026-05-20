@@ -8,6 +8,10 @@ message DocumentIDRequest {
     uint64 id = 1;
 }
 
+message DocumentStateResponse {
+    bytes state = 1;
+}
+
 message PermissionChangedRequest {
     uint64 doc_id = 1;
     uint64 user_id = 2;
@@ -15,6 +19,7 @@ message PermissionChangedRequest {
 }
 
 service SyncServerInternal {
+    rpc GetState(DocumentIDRequest) returns (DocumentStateResponse) {}
     rpc PostSnapshot(DocumentIDRequest) returns (google.protobuf.Empty) {}
     rpc DeleteDocument(DocumentIDRequest) returns (google.protobuf.Empty) {}
     rpc PermissionChanged(PermissionChangedRequest) returns (google.protobuf.Empty) {}

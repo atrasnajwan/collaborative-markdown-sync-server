@@ -9,7 +9,7 @@ import { syncRedis } from "../services/redis.js"
 import { forwardUpdate } from "./persistence.js"
 import { UserRole } from "../types/user.js"
 
-export class DocumentNotFoundError extends Error {}
+export class DocumentNotFoundError extends Error { }
 
 export function setupDocListeners(room: Room) {
   room.doc.on("update", (update: Uint8Array, origin: unknown) => {
@@ -91,6 +91,7 @@ export async function handleDocumentDeleted(roomName: string): Promise<number> {
 export async function deleteDocument(docId: number): Promise<number> {
   const roomName = `doc-${docId}`
   if (syncRedis.isEnabled) {
+    logger.trace("Publish process to Redis")
     return syncRedis.publishDocumentDeleted(roomName)
   } else {
     return handleDocumentDeleted(roomName)

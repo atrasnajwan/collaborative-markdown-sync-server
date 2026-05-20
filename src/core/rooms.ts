@@ -15,9 +15,6 @@ import { logger } from "../services/logger.js"
 import { syncRedis } from "../services/redis.js"
 import { DocumentNotFoundError, getLatestDocState, setupDocListeners } from "./documents.js"
 import { UserRole } from "../types/user.js"
-import { KafkaDocMessage } from "../types/kafka.js"
-import { kafkaService } from "../services/kafka.js"
-import { toBase64 } from "../utils/utils.js"
 
 /**
  * In‑memory registry of all active rooms
@@ -222,11 +219,12 @@ export function removeRoom(room: Room) {
   rooms.delete(room.name)
 }
 
-export async function fetchRoomState(docId: number, rooms: Map<string, Room>): Promise<void> {
+export async function fetchRoomState(docId: number, rooms: Map<string, Room>): Promise<Buffer<ArrayBuffer>> {
   const roomName = `doc-${docId}`
   try {
     let binary = null
     if (syncRedis.isEnabled) {
+      logger.trace("Publish process to Redis")
       const responseChannel = `snapshot:response:${randomUUID()}`
       syncRedis.publishSnapshotRequest(roomName, responseChannel)
       binary = await syncRedis.subscribeSnapshotResponse(responseChannel)
@@ -235,25 +233,7 @@ export async function fetchRoomState(docId: number, rooms: Map<string, Room>): P
       if (!room) throw new DocumentNotFoundError("Document not found")
       binary = getLatestDocState(room)
     }
-
-    if (binary) {
-      // push message to kafka
-      const event: KafkaDocMessage = {
-        event_id: randomUUID(),
-        type: "document.snapshot",
-        document_id: docId,
-        timestamp: Date.now(),
-        data: toBase64(binary),
-      }
-
-      logger.debug({ docId, binary: binary.length }, "Snapshot response")
-      return kafkaService.sendMessage("document.events", [
-        {
-          key: String(docId),
-          value: JSON.stringify(event),
-        },
-      ])
-    }
+    return binary
   } catch (err) {
     logger.error({ error: err, docId }, "Failed to fetch last document state")
     throw err
