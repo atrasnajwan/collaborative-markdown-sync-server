@@ -266,7 +266,7 @@ class SyncRedis {
    * blocking other servers indefinitely.
    */
   public async acquireForwardLock(roomName: string): Promise<boolean> {
-    if (!this.isEnabled || !this.pubClient) return false
+    if (!this.isEnabled || !this.pubClient) return true
     const key = `lock:forward:${roomName}`
     try {
       const res = await this.pubClient.set(key, "1", { NX: true, PX: 5000 })

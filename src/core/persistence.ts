@@ -10,6 +10,7 @@ import { config } from "../config/config.js"
 import { getLatestDocState } from "./documents.js"
 import { DocumentState } from "../types/document.js"
 import { fetchRoomState } from "./rooms.js"
+import { syncRedis } from "../services/redis.js"
 
 /**
  * Forward each Yjs document update to the message queue.
@@ -169,30 +170,42 @@ export async function persistAllRooms(rooms: Map<RoomName, Room>) {
   logger.info({ roomCount: rooms.size }, "Starting room persistence")
   const promises = Array.from(rooms.values()).map(async room => {
     try {
-      logger.debug({ roomName: room.name }, "Saving room state")
-      const docId = room.name.replace("doc-", "")
-      const binary = getLatestDocState(room)
+      // only one server should forward when multiple instances host the same
+      // document. use a redis-backed lock to ensure the request is sent once.
+      const locked = await syncRedis.acquireForwardLock(room.name)
+      if (locked) {
+        logger.debug({ roomName: room.name }, "Saving room state")
+        const docId = room.name.replace("doc-", "")
+        const binary = getLatestDocState(room)
 
-      // prioritize using kafka if available
-      if (kafkaService.producerConnected) {
-        const event: KafkaDocMessage = {
-          event_id: randomUUID(),
-          type: "document.snapshot",
-          document_id: Number(docId),
-          timestamp: Date.now(),
-          data: toBase64(binary),
+        // prioritize using kafka if available
+        if (kafkaService.producerConnected) {
+          const event: KafkaDocMessage = {
+            event_id: randomUUID(),
+            type: "document.snapshot",
+            document_id: Number(docId),
+            timestamp: Date.now(),
+            data: toBase64(binary),
+          }
+
+          await kafkaService.sendMessage("document.events", [
+            {
+              key: docId,
+              value: JSON.stringify(event),
+            },
+          ])
+        } else {
+          await postDocumentSnapshot(Number(docId), binary)
         }
-
-        await kafkaService.sendMessage("document.events", [
-          {
-            key: docId,
-            value: JSON.stringify(event),
-          },
-        ])
+        logger.debug({ roomName: room.name, size: binary.length }, "Room state saved successfully")
+        // release lock
+        await syncRedis.releaseForwardLock(room.name)
       } else {
-        await postDocumentSnapshot(Number(docId), binary)
+        logger.trace(
+          { roomName: room.name },
+          "Skipping snapshot: another instance already forwarded snapshot",
+        )
       }
-      logger.debug({ roomName: room.name, size: binary.length }, "Room state saved successfully")
     } catch (e) {
       logger.error({ roomName: room.name, error: e }, "Failed to save room state")
     }
