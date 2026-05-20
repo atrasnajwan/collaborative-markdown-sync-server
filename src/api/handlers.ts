@@ -36,20 +36,20 @@ export async function handleInternalAPI(
 
   // Auth
   if (!authenticateApiCall(req.headers)) {
+    logger.warn("Failed to Authenticate!")
     res.writeHead(403)
     return res.end()
   }
 
   try {
-    const parsedUrl = new URL(url)
-    const parts = parsedUrl.pathname.split("/")
-
+    const parts = url.split("/")
     const docIdRaw = parts[3]
     const action = parts[4]
 
     // check valid docId
     const docId = Number(docIdRaw);
     if (!docIdRaw || isNaN(docId) || docId <= 0) {
+      logger.error("Invalid or missing docId")
       return sendJSON(res, 400, { error: "Invalid or missing docId" })
     }
 
@@ -84,7 +84,7 @@ export async function handleInternalAPI(
       const { user_id, role } = JSON.parse(body)
 
       try {
-        const updated = await changeUserPermission(docId, user_id, role)
+        const updated = await changeUserPermission(docId, Number(user_id), String(role))
         logger.debug({ updated }, "Notification sent")
         return sendJSON(res, 200, {
           ok: true,
@@ -97,7 +97,8 @@ export async function handleInternalAPI(
     }
 
     sendJSON(res, 404)
-  } catch {
+  } catch (error) {
+    logger.error({ error }, "Failed to process internal API")
     res.writeHead(500)
     return res.end()
   }
