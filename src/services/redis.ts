@@ -1,10 +1,11 @@
 import { createClient, RedisClientType } from "redis"
-import { config } from "./config.js"
+import { config } from "../config/config.js"
 import { logger } from "./logger.js"
 import * as Y from "yjs"
-import { Room } from "./types.js"
+import { Room } from "../types/room.js"
 import * as awarenessProtocol from "y-protocols/awareness"
-import { getLatestDocState, handleDocumentDeleted, handleUserRoleChanged } from "./rooms.js"
+import { getLatestDocState, handleDocumentDeleted } from "../core/documents.js"
+import { handleUserRoleChanged } from "../core/users.js"
 
 class SyncRedis {
   public pubClient: RedisClientType | null = null
@@ -240,7 +241,7 @@ class SyncRedis {
     })
   }
 
-  public publishRoleChanged(roomName: string, userId: string, role: string) {
+  public publishRoleChanged(roomName: string, userId: number, role: string) {
     if (!this.isEnabled || !this.pubClient) return 0
 
     logger.trace({ roomName, userId, role }, "[User Role] Publish to channel")
@@ -265,7 +266,7 @@ class SyncRedis {
    * blocking other servers indefinitely.
    */
   public async acquireForwardLock(roomName: string): Promise<boolean> {
-    if (!this.isEnabled || !this.pubClient) return false
+    if (!this.isEnabled || !this.pubClient) return true
     const key = `lock:forward:${roomName}`
     try {
       const res = await this.pubClient.set(key, "1", { NX: true, PX: 5000 })

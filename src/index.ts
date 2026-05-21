@@ -8,12 +8,15 @@
  * - Forwards doc updates to backend via gRPC/API (see proto/internal.proto)
  */
 
-import { startInternalGrpcServer } from "./internalGrpcServer.js"
-import { logger } from "./logger.js"
-import { syncRedis } from "./redis.js"
-import { rooms } from "./rooms.js"
-import { persistAllRooms, startServer } from "./server.js"
+import { kafkaService } from "./services/kafka.js"
+import { logger } from "./services/logger.js"
+import { syncRedis } from "./services/redis.js"
+import { rooms } from "./core/rooms.js"
+import { startServer } from "./server.js"
 import grpc from "@grpc/grpc-js"
+import { persistAllRooms } from "./core/persistence.js"
+import { startGrpcServer } from "./grpc/server.js"
+import { exit } from "process"
 
 try {
   logger.info("Connecting redis...")
@@ -23,12 +26,21 @@ try {
   logger.info("Running in Single-Server mode.")
 }
 
+try {
+  logger.info("Starting Kafka Process...")
+  await kafkaService.start()
+} catch {
+  throw new Error("Error during starting Kafka")
+}
+
+logger.info("Starting HTTP server...")
 const server = startServer()
 
 // spin up gRPC server for internal API
 let grpcServer: grpc.Server | null = null
 try {
-  grpcServer = startInternalGrpcServer()
+  logger.info("Starting gRPC server...")
+  grpcServer = startGrpcServer()
 } catch (err) {
   logger.error({ error: err }, "failed to start internal gRPC server")
 }
@@ -46,7 +58,7 @@ async function gracefulShutdown(signal: string) {
   const forceExit = setTimeout(() => {
     logger.error("[Shutdown] Timed out! Forcefully exiting.")
     if (grpcServer) grpcServer.forceShutdown()
-    process.exit(1)
+    process.exitCode = 1
   }, 10000) // 10 seconds
 
   // Stop accepting new connections
@@ -58,10 +70,14 @@ async function gracefulShutdown(signal: string) {
     // Persist data to the Backend
     if (rooms.size > 0) {
       logger.info(`[Shutdown] Persisting ${rooms.size} active rooms...`)
-      await persistAllRooms()
+      await persistAllRooms(rooms)
     }
 
+    // disconnect redis
     await syncRedis.disconnect()
+    logger.info(`[Shutdown] Redis disconnected`)
+
+    // shutdown gRPC
     if (grpcServer) {
       await new Promise<void>(resolve => {
         grpcServer.tryShutdown(() => {
@@ -70,13 +86,17 @@ async function gracefulShutdown(signal: string) {
         })
       })
     }
+    // shutdown kafka
+    await kafkaService.shutdown()
+    logger.info(`[Shutdown] Kafka is gracefully shut down.`)
     logger.debug("[Shutdown] All data saved. Clean exit.")
     clearTimeout(forceExit)
-    process.exit(0)
+    process.exitCode = 0
   } catch (err) {
     logger.error({ error: err }, "[Shutdown] Error during cleanup:")
-    process.exit(1)
+    process.exitCode = 1
   }
+  exit()
 }
 
 // Listen for Ctrl+C (Interrupt) and SIGTERM (Docker)

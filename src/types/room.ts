@@ -2,13 +2,14 @@ import type { WebSocket } from "ws"
 import type * as Y from "yjs"
 import type * as awarenessProtocol from "y-protocols/awareness"
 import EventEmitter from "node:events"
+import { UserRole } from "./user.js"
 
 export type RoomName = string
 
 export type ForwardQueue = {
   timer?: NodeJS.Timeout
   updates: Uint8Array[]
-  lastUserId: string
+  lastUserId: number
 }
 
 export type Conn = {
@@ -17,7 +18,7 @@ export type Conn = {
   room: RoomName
   awarenessClientId: number
   closed: boolean
-  userId: string
+  userId: number
   userRole: UserRole
 }
 
@@ -30,11 +31,4 @@ export type Room = {
   forwardQueue?: ForwardQueue
   ready: boolean
   emitter: EventEmitter
-}
-
-export enum UserRole {
-  Owner = "owner",
-  Editor = "editor",
-  Viewer = "viewer",
-  None = "none",
 }

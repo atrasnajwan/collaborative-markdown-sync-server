@@ -3,8 +3,10 @@ import * as syncProtocol from "y-protocols/sync"
 import * as encoding from "lib0/encoding"
 import * as decoding from "lib0/decoding"
 import type { WebSocket } from "ws"
-import type { Conn, Room } from "./types.js"
-import { logger } from "./logger.js"
+import type { Conn, Room } from "../types/room.js"
+import { logger } from "../services/logger.js"
+import { touchRoom } from "./rooms.js"
+import { isWsOpen } from "../utils/utils.js"
 
 // Message types used by y-websocket:
 // 0 = sync, 1 = awareness, 2 = auth, 3 = query awareness
@@ -13,15 +15,11 @@ export const messageAwareness = 1
 export const messageAuth = 2
 export const messageQueryAwareness = 3
 
-export function isOpen(ws: WebSocket): boolean {
-  return ws.readyState === ws.OPEN
-}
-
 /**
  * Safely send a binary message over the WebSocket
  */
 export function sendMessage(ws: WebSocket, message: Uint8Array) {
-  if (!isOpen(ws)) {
+  if (!isWsOpen(ws)) {
     logger.trace({ messageSize: message.length }, "WebSocket not open, message not sent")
     return
   }
@@ -198,4 +196,31 @@ export function handleIncoming(room: Room, conn: Conn, data: Uint8Array) {
       break
     }
   }
+}
+
+export function handleOnMessage(
+  data: any,
+  isBinary: boolean,
+  room: Room,
+  roomName: string,
+  conn: Conn,
+) {
+  if (!isBinary) {
+    logger.debug({ roomName, connId: conn.id }, "Received non-binary message, ignoring")
+    return
+  }
+
+  const messageData: Uint8Array =
+    data instanceof ArrayBuffer
+      ? new Uint8Array(data)
+      : Array.isArray(data)
+        ? new Uint8Array(Buffer.concat(data))
+        : new Uint8Array(data as Buffer)
+
+  logger.trace(
+    { roomName, connId: conn.id, dataSize: messageData.length },
+    "Processing incoming message",
+  )
+  touchRoom(room)
+  handleIncoming(room, conn, messageData)
 }

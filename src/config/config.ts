@@ -13,6 +13,7 @@ export type Config = {
   JWT_SECRET: string
   ROOM_TTL_MS: number
   REDIS_ADDRESS: string
+  KAFKA_BROKERS: string[]
 }
 
 export const config: Config = {
@@ -27,6 +28,7 @@ export const config: Config = {
   JWT_SECRET: process.env.JWT_SECRET ?? "my-jwt-secret",
   FORWARD_DEBOUNCE_MS: intFromEnv("FORWARD_DEBOUNCE_MS", 0),
   ROOM_TTL_MS: intFromEnv("ROOM_TTL_MS", 10 * 60 * 1000), // 10 minutes default
+  KAFKA_BROKERS: !process.env.KAFKA_BROKERS ? [] : process.env.KAFKA_BROKERS.split(","),
 }
 
 export function normalizeRoomFromUrl(reqUrl: string | undefined): string | null {

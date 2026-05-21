@@ -1,0 +1,122 @@
+import http from "http"
+import { Room } from "../types/room.js"
+import { logger } from "../services/logger.js"
+import { authenticateApiCall } from "../core/auth.js"
+import { deleteDocument, DocumentNotFoundError } from "../core/documents.js"
+import { changeUserPermission } from "../core/users.js"
+import { fetchRoomState } from "../core/rooms.js"
+import { pushDocumentSnapshot } from "../core/persistence.js"
+
+const sendJSON = (
+  res: http.ServerResponse,
+  status: number,
+  data?: object,
+  isBinary: boolean = false,
+) => {
+  res.writeHead(status, {
+    "Content-Type": isBinary ? "application/octet-stream" : "application/json",
+  })
+  res.end(data ? (isBinary ? data : JSON.stringify(data)) : null)
+}
+
+const getBody = (req: http.IncomingMessage): Promise<string> => {
+  return new Promise(resolve => {
+    let body = ""
+    req.on("data", chunk => (body += chunk))
+    req.on("end", () => resolve(body))
+  })
+}
+
+export async function handleInternalAPI(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rooms: Map<string, Room>,
+) {
+  const { method, url } = req
+  if (!url) return
+
+  // Auth
+  if (!authenticateApiCall(req.headers)) {
+    logger.warn("Failed to Authenticate!")
+    res.writeHead(403)
+    return res.end()
+  }
+
+  try {
+    const parts = url.split("/")
+    const docIdRaw = parts[3]
+    const action = parts[4]
+
+    // check valid docId
+    const docId = Number(docIdRaw);
+    if (!docIdRaw || isNaN(docId) || docId <= 0) {
+      logger.error("Invalid or missing docId")
+      return sendJSON(res, 400, { error: "Invalid or missing docId" })
+    }
+
+    // POST /internal/documents/:id/snapshot
+    // push current document snapshot to kafka message or via http/grpc
+    if (method === "POST" && action === "snapshot") {
+      try {
+        await pushDocumentSnapshot(docId, rooms)
+        return sendJSON(res, 204)
+      } catch (err) {
+        if (err as DocumentNotFoundError) {
+          return sendJSON(res, 404, { error: "Document not found" })
+        }
+        return sendJSON(res, 500, { error: "Failed to get document snapshot" })
+      }
+    }
+
+    // GET /internal/documents/:id/state
+    // return current document state in base64 string
+    if (method === "GET" && action === "state") {
+      try {
+        const docState = await fetchRoomState(docId, rooms)
+        return sendJSON(res, 200, docState, true)
+      } catch (err) {
+        if (err as DocumentNotFoundError) {
+          return sendJSON(res, 404, { error: "Document not found" })
+        }
+        return sendJSON(res, 500, { error: "Failed to get document snapshot" })
+      }
+    }
+
+
+    // DELETE /internal/documents/:id
+    if (method === "DELETE" && !action) {
+      try {
+        const updated = await deleteDocument(docId)
+        logger.debug({ updated }, "Notification sent")
+        return sendJSON(res, 204)
+      } catch (error) {
+        logger.error({ error }, "Failed to notify client of document deleted")
+        return sendJSON(res, 500, { error: "Failed to notify connected clients" })
+      }
+    }
+
+    // PUT /internal/documents/:id/permission
+    if (method === "PUT" && action === "permission") {
+      const body = await getBody(req)
+      const { user_id, role } = JSON.parse(body)
+
+      try {
+        const updated = await changeUserPermission(docId, Number(user_id), String(role))
+        logger.debug({ updated }, "Notification sent")
+        return sendJSON(res, 200, {
+          ok: true,
+          updated,
+        })
+      } catch (error) {
+        logger.error({ error, user_id }, "Failed to notify client of permission change")
+        return sendJSON(res, 500, { error: "Failed to notify connected clients" })
+      }
+    }
+
+    sendJSON(res, 404)
+  } catch (error) {
+    logger.error({ error }, "Failed to process internal API")
+    res.writeHead(500)
+    return res.end()
+  }
+}
