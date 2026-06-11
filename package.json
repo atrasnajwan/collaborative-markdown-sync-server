@@ -15,7 +15,7 @@
     "format:check": "prettier --check src/ \"*.json\" \"*.md\" --ignore-unknown"
   },
   "dependencies": {
-    "@grpc/grpc-js": "^1.10.11",
+    "@grpc/grpc-js": "^1.14.4",
     "@grpc/proto-loader": "^0.7.6",
     "dotenv": "^17.2.3",
     "jsonwebtoken": "^9.0.3",
